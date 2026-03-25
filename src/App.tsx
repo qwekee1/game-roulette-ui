@@ -77,12 +77,12 @@ export default function GameRouletteUI() {
   const [presetCount, setPresetCount] = useState<number>(0);
   const [isPresetOpen, setIsPresetOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isSoundEnabled, setIsSoundEnabled] = useState(() => {
+  const [isSoundEnabled, setIsSoundEnabled] = useState<boolean>(() => {
     const saved = localStorage.getItem("soundEnabled");
     return saved !== null ? JSON.parse(saved) : true;
   });
 
-  const [soundVolume, setSoundVolume] = useState(() => {
+  const [soundVolume, setSoundVolume] = useState<number>(() => {
     const saved = localStorage.getItem("soundVolume");
     return saved !== null ? Number(saved) : 70;
   });
@@ -582,7 +582,7 @@ export default function GameRouletteUI() {
           >
               <div className="mb-5 flex items-center justify-between">
                 <div>
-                  <h2 className="text-[26px] font-semibold text-white xl:text-[30px]">Настройки</h2>
+                  <h2 className="text-[26px] font-semibold text-white xl:text-[30px]">Настройки2</h2>
                   <p className="mt-1 text-sm text-zinc-400 xl:text-base">Управление звуками рулетки</p>
                 </div>
                 <button
