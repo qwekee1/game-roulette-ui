@@ -16,6 +16,10 @@ const PRESET_GAMES = [
 const DIFFICULTIES = ["Легкая", "Нормальная", "Сложная"] as const;
 type Difficulty = (typeof DIFFICULTIES)[number];
 
+type AudioContextCtor = {
+  new (): AudioContext;
+};
+
 const LANE_ITEM_HEIGHT = 92;
 const STEP_GAP = 10;
 const STEP_DISTANCE = LANE_ITEM_HEIGHT + STEP_GAP;
@@ -72,9 +76,14 @@ export default function GameRouletteUI() {
   const [spinSequence, setSpinSequence] = useState<string[] | null>(null);
   const [presetCount, setPresetCount] = useState<number>(0);
   const [isPresetOpen, setIsPresetOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSoundEnabled, setIsSoundEnabled] = useState(true);
+  const [soundVolume, setSoundVolume] = useState(70);
 
-  const spinTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const settleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const spinTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const settleTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const tickTimeoutsRef = useRef<Array<ReturnType<typeof window.setTimeout>>>([]);
 
   const repeatedGames = useMemo(() => {
     return Array.from({ length: 60 }, (_, i) => games[i % games.length]);
@@ -82,8 +91,17 @@ export default function GameRouletteUI() {
 
   useEffect(() => {
     return () => {
-      if (spinTimeoutRef.current) clearTimeout(spinTimeoutRef.current);
-      if (settleTimeoutRef.current) clearTimeout(settleTimeoutRef.current);
+      if (spinTimeoutRef.current !== null) {
+        window.clearTimeout(spinTimeoutRef.current);
+      }
+      if (settleTimeoutRef.current !== null) {
+        window.clearTimeout(settleTimeoutRef.current);
+      }
+      tickTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      tickTimeoutsRef.current = [];
+      if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+        void audioContextRef.current.close();
+      }
     };
   }, []);
 
@@ -93,11 +111,134 @@ export default function GameRouletteUI() {
 
   const laneGames = spinSequence ?? visibleGames;
 
-  const handleSpin = () => {
-    if (isSpinning) return;
+  const getAudioContext = () => {
+    if (typeof window === "undefined") {
+      return null;
+    }
 
-    if (spinTimeoutRef.current) clearTimeout(spinTimeoutRef.current);
-    if (settleTimeoutRef.current) clearTimeout(settleTimeoutRef.current);
+    const audioWindow = window as Window & {
+      webkitAudioContext?: AudioContextCtor;
+    };
+    const AudioContextClass: AudioContextCtor | undefined =
+      window.AudioContext ?? audioWindow.webkitAudioContext;
+
+    if (!AudioContextClass) {
+      return null;
+    }
+
+    if (!audioContextRef.current || audioContextRef.current.state === "closed") {
+      audioContextRef.current = new AudioContextClass();
+    }
+
+    if (audioContextRef.current.state === "suspended") {
+      void audioContextRef.current.resume();
+    }
+
+    return audioContextRef.current;
+  };
+
+  const playTone = (
+    frequency: number,
+    durationMs: number,
+    volume: number,
+    type: OscillatorType,
+  ) => {
+    if (!isSoundEnabled || soundVolume === 0) {
+      return;
+    }
+
+    const ctx = getAudioContext();
+    if (!ctx) {
+      return;
+    }
+
+    const now = ctx.currentTime;
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, now);
+
+    const finalVolume = volume * (soundVolume / 100);
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(finalVolume, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + durationMs / 1000);
+
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    oscillator.start(now);
+    oscillator.stop(now + durationMs / 1000 + 0.02);
+  };
+
+  const clearTickTimeouts = () => {
+    tickTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    tickTimeoutsRef.current = [];
+  };
+
+  const startTickSound = (totalSteps: number, duration: number) => {
+    clearTickTimeouts();
+
+    const easing = (t: number) => Math.pow(t, 4.2);
+    const baseTimes: number[] = [];
+
+    for (let step = 1; step <= totalSteps; step += 1) {
+      const progress = step / totalSteps;
+      baseTimes.push(duration * easing(progress));
+    }
+
+    const adjustedTimes = baseTimes.map((time, index) => {
+      if (index === 0) {
+        return Math.max(12, time * 0.25);
+      }
+
+      const prev = baseTimes[index - 1];
+      const gap = time - prev;
+      const slowFactor = index / totalSteps;
+
+      let multiplier = 1.05;
+      if (slowFactor > 0.85) multiplier = 2.2;
+      else if (slowFactor > 0.7) multiplier = 1.8;
+      else if (slowFactor > 0.5) multiplier = 1.4;
+
+      return prev + Math.max(14, gap * multiplier);
+    });
+
+    adjustedTimes.forEach((time, index) => {
+      if (time > duration - 2000) return;
+
+      const timeoutId = window.setTimeout(() => {
+        const progress = (index + 1) / totalSteps;
+        const pitch = 1200 - progress * 500;
+        const volume = progress < 0.4 ? 0.028 : progress < 0.75 ? 0.022 : 0.018;
+        const durationMs =
+          progress < 0.6 ? 22 : progress < 0.8 ? 40 : progress < 0.9 ? 70 : 120;
+
+        playTone(pitch, durationMs, volume, "square");
+      }, Math.max(0, Math.round(time)));
+
+      tickTimeoutsRef.current.push(timeoutId);
+    });
+  };
+
+  const playWinSound = () => {
+    playTone(523.25, 160, 0.05, "triangle");
+    window.setTimeout(() => playTone(659.25, 180, 0.05, "triangle"), 120);
+    window.setTimeout(() => playTone(783.99, 260, 0.06, "triangle"), 250);
+  };
+
+  const handleSpin = () => {
+    if (isSpinning) {
+      return;
+    }
+
+    if (spinTimeoutRef.current !== null) {
+      window.clearTimeout(spinTimeoutRef.current);
+    }
+    if (settleTimeoutRef.current !== null) {
+      window.clearTimeout(settleTimeoutRef.current);
+    }
+    clearTickTimeouts();
 
     const extraLoops = 3;
     const randomExtra = Math.floor(Math.random() * games.length);
@@ -111,6 +252,7 @@ export default function GameRouletteUI() {
     setSpinSequence(sequence);
     setSpinTransition("none");
     setSpinTranslate(0);
+    startTickSound(totalSteps, duration);
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -121,11 +263,11 @@ export default function GameRouletteUI() {
       });
     });
 
-    spinTimeoutRef.current = setTimeout(() => {
+    spinTimeoutRef.current = window.setTimeout(() => {
       setSpinTransition("transform 900ms cubic-bezier(0.25, 1, 0.5, 1)");
       setSpinTranslate(-(totalSteps * STEP_DISTANCE));
 
-      settleTimeoutRef.current = setTimeout(() => {
+      settleTimeoutRef.current = window.setTimeout(() => {
         setCenterIndex(winnerIndex);
         setSelectedGame(winner);
         setSpinSequence(null);
@@ -135,6 +277,8 @@ export default function GameRouletteUI() {
           setSpinTranslate(0);
         });
 
+        clearTickTimeouts();
+        playWinSound();
         setIsSpinning(false);
       }, 900);
     }, duration);
@@ -142,7 +286,7 @@ export default function GameRouletteUI() {
 
   return (
     <div
-      className="h-screen w-screen overflow-hidden bg-[#090a0d] text-white"
+      className="relative h-screen w-screen overflow-hidden bg-[#090a0d] text-white"
       style={{ fontFamily: "Gilroy, ui-sans-serif, system-ui, sans-serif" }}
     >
       <div className="mx-auto flex h-full w-full max-w-[1728px] items-stretch gap-4 p-4">
@@ -214,51 +358,21 @@ export default function GameRouletteUI() {
 
           <div className="mt-auto pt-5">
             <div className="flex flex-wrap gap-2.5 xl:gap-3">
-              {["SG", "Steam", "HLTB"].map((tag) => {
-                if (tag === "SG") {
-                  return (
-                    <a
-                      key={tag}
-                      href="https://stopgame.ru/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex h-[42px] items-center justify-center rounded-full bg-white px-3 text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:h-[48px] xl:px-4 xl:text-[18px]"
-                    >
-                      <span className="block truncate">{tag}</span>
-                    </a>
-                  );
-                }
-
-                if (tag === "Steam") {
-                  return (
-                    <a
-                      key={tag}
-                      href="https://store.steampowered.com/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex h-[42px] items-center justify-center rounded-full bg-white px-3 text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:h-[48px] xl:px-4 xl:text-[18px]"
-                    >
-                      <span className="block truncate">{tag}</span>
-                    </a>
-                  );
-                }
-
-                if (tag === "HLTB") {
-                  return (
-                    <a
-                      key={tag}
-                      href="https://howlongtobeat.com/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex h-[42px] items-center justify-center rounded-full bg-white px-3 text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:h-[48px] xl:px-4 xl:text-[18px]"
-                    >
-                      <span className="block truncate">{tag}</span>
-                    </a>
-                  );
-                }
-
-                return <Pill key={tag}>{tag}</Pill>;
-              })}
+              {[
+                { label: "SG", href: "https://stopgame.ru/" },
+                { label: "Steam", href: "https://store.steampowered.com/" },
+                { label: "HLTB", href: "https://howlongtobeat.com/" },
+              ].map((item) => (
+                <a
+                  key={item.label}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-[42px] items-center justify-center rounded-full bg-white px-3 text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:h-[48px] xl:px-4 xl:text-[18px]"
+                >
+                  <span className="block truncate">{item.label}</span>
+                </a>
+              ))}
             </div>
           </div>
         </aside>
@@ -405,21 +519,140 @@ export default function GameRouletteUI() {
             </div>
           </div>
 
-          <div className="mt-5 flex justify-start gap-3 xl:mt-6 xl:gap-4">
+          <div className="mt-5 flex justify-start xl:mt-6">
             <button
               type="button"
-              className="inline-flex whitespace-nowrap rounded-full bg-white px-3 py-2.5 text-left text-[16px] font-medium text-black xl:px-4 xl:py-3 xl:text-[18px]"
-            >
-              Рулетка
-            </button>
-            <button
-              type="button"
-              className="inline-flex whitespace-nowrap rounded-full bg-white px-3 py-2.5 text-left text-[16px] font-medium text-black xl:px-4 xl:py-3 xl:text-[18px]"
+              onClick={() => setIsSettingsOpen(true)}
+              className="inline-flex whitespace-nowrap rounded-full bg-white px-3 py-2.5 text-left text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:px-4 xl:py-3 xl:text-[18px]"
             >
               Настройки
             </button>
           </div>
         </aside>
+      </div>
+
+      <div
+        className={[
+          "absolute inset-0 z-50 flex items-center justify-center p-6 backdrop-blur-sm transition-all duration-300 ease-out",
+          isSettingsOpen
+            ? "pointer-events-auto bg-black/45 opacity-100"
+            : "pointer-events-none bg-black/0 opacity-0",
+        ].join(" ")}
+      >
+        <div
+          className={[
+            "w-full max-w-[460px] rounded-[32px] bg-[#17191e] p-6 shadow-2xl transition-all duration-300 ease-out xl:p-7",
+            isSettingsOpen
+              ? "translate-y-0 scale-100 opacity-100"
+              : "translate-y-4 scale-95 opacity-0",
+          ].join(" ")}
+        >
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <h2 className="text-[26px] font-semibold text-white xl:text-[30px]">
+                Настройки
+              </h2>
+              <p className="mt-1 text-sm text-zinc-400 xl:text-base">
+                Управление звуками рулетки
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsSettingsOpen(false)}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-white text-xl font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98]"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="space-y-5">
+            <div className="rounded-[26px] bg-[#101115] p-4 xl:p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-[18px] font-medium text-white xl:text-[20px]">
+                    Звуки
+                  </div>
+                  <div className="mt-1 text-sm text-zinc-400">
+                    Тики рулетки и звук победы
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={isSoundEnabled}
+                  onClick={() => setIsSoundEnabled((prev) => !prev)}
+                  className={[
+                    "relative inline-flex h-10 w-[74px] items-center rounded-full transition-all duration-200",
+                    isSoundEnabled ? "bg-emerald-500" : "bg-zinc-600",
+                  ].join(" ")}
+                >
+                  <span
+                    className={[
+                      "inline-block h-8 w-8 transform rounded-full bg-white transition-transform duration-200",
+                      isSoundEnabled ? "translate-x-9" : "translate-x-1",
+                    ].join(" ")}
+                  />
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-[26px] bg-[#101115] p-4 xl:p-5">
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-[18px] font-medium text-white xl:text-[20px]">
+                    Громкость
+                  </div>
+                  <div className="mt-1 text-sm text-zinc-400">
+                    Общий уровень звука интерфейса
+                  </div>
+                </div>
+                <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium text-black xl:text-[18px]">
+                  {soundVolume}%
+                </div>
+              </div>
+
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={soundVolume}
+                onChange={(event) => setSoundVolume(Number(event.target.value))}
+                className="slider h-3 w-full cursor-pointer appearance-none rounded-full"
+                style={{
+                  background: `linear-gradient(to right, #22c55e ${soundVolume}%, #52525b ${soundVolume}%)`,
+                }}
+              />
+
+              <style>{`
+                .slider::-webkit-slider-thumb {
+                  appearance: none;
+                  width: 20px;
+                  height: 20px;
+                  border-radius: 999px;
+                  background: #ffffff;
+                  cursor: pointer;
+                  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                  border: none;
+                  transition: transform 0.15s ease;
+                }
+
+                .slider::-webkit-slider-thumb:hover {
+                  transform: scale(1.1);
+                }
+
+                .slider::-moz-range-thumb {
+                  width: 20px;
+                  height: 20px;
+                  border-radius: 999px;
+                  background: #ffffff;
+                  cursor: pointer;
+                  border: none;
+                }
+              `}</style>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
