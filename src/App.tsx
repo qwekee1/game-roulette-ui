@@ -530,7 +530,7 @@ export default function GameRouletteUI() {
         >
           <div className="mb-5 flex items-center justify-between">
             <div>
-              <h2 className="text-[26px] font-semibold text-white xl:text-[30px]">Настройки2</h2>
+              <h2 className="text-[26px] font-semibold text-white xl:text-[30px]">Настройки</h2>
               <p className="mt-1 text-sm text-zinc-400 xl:text-base">Управление звуками рулетки</p>
             </div>
             <button
