@@ -1,0 +1,276 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #090a0d;
+  color: #ffffff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: #090a0d;
+}
+
+button,
+a {
+  font: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 16px;
+}
+
+.page-grid {
+  max-width: 1500px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr) 320px;
+  gap: 16px;
+  min-height: calc(100vh - 32px);
+}
+
+.panel {
+  border-radius: 28px;
+  overflow: hidden;
+}
+
+.panel-left,
+.panel-right {
+  background: #101115;
+  padding: 20px;
+}
+
+.panel-center {
+  background: #ececec;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.winner-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  height: 100%;
+}
+
+.cover-placeholder {
+  aspect-ratio: 1 / 1;
+  border-radius: 24px;
+  background: linear-gradient(145deg, #fafafa, #dfe6ef);
+  color: #1c1c1c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+  padding: 20px;
+}
+
+.cover-title {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.cover-subtitle {
+  margin-top: 10px;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.winner-name {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.05;
+}
+
+.meta-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.meta-pill {
+  background: #1a1d24;
+  border-radius: 999px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.meta-pill span {
+  color: #b7bcc8;
+}
+
+.action-row {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.action-button,
+.spin-button,
+.round-item {
+  border: none;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.18s ease, opacity 0.18s ease, background 0.18s ease;
+}
+
+.action-button {
+  background: #ffffff;
+  color: #0d0d0d;
+  padding: 12px 18px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.action-button:hover,
+.spin-button:hover,
+.round-item:hover {
+  transform: translateY(-1px);
+}
+
+.roulette-frame {
+  position: relative;
+  flex: 1;
+  background: #f5f5f5;
+  border-radius: 24px;
+  overflow: hidden;
+  min-height: 500px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.roulette-markers {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  color: #ff2e71;
+  font-size: 24px;
+  z-index: 2;
+}
+
+.roulette-track-window {
+  overflow: hidden;
+  width: 100%;
+  max-width: 920px;
+}
+
+.roulette-track {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  will-change: transform;
+}
+
+.roulette-row {
+  height: 76px;
+  border-radius: 999px;
+  background: #d9d9d9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 28px;
+  font-size: 24px;
+  color: #5f6064;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.roulette-row--active {
+  color: #111111;
+  font-weight: 800;
+  font-size: 30px;
+}
+
+.spin-button {
+  align-self: center;
+  margin-top: 18px;
+  padding: 14px 28px;
+  border-radius: 999px;
+  background: #111111;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.spin-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.right-title {
+  font-size: 20px;
+  font-weight: 800;
+  margin-bottom: 16px;
+}
+
+.round-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+}
+
+.round-item {
+  width: 100%;
+  background: #ffffff;
+  color: #111111;
+  border-radius: 999px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.round-index {
+  color: #6a6b70;
+  font-weight: 700;
+}
+
+.round-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 700;
+}
+
+@media (max-width: 1100px) {
+  .page-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-center {
+    min-height: 600px;
+  }
+
+  .round-list {
+    max-height: none;
+  }
+}
