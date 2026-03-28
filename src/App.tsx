@@ -69,6 +69,12 @@ const SPIN_POOL_SIZE = 10;
 const LOCAL_STORAGE_SOUND_ENABLED = "soundEnabled";
 const LOCAL_STORAGE_SOUND_VOLUME = "soundVolume";
 const LOCAL_STORAGE_RAW_DB = "gamesRouletteRawDb";
+const REMOTE_DB_PATHS = [
+  "/games_roulette_database_merged.json",
+  "/data/games_roulette_database_merged.json",
+  "./games_roulette_database_merged.json",
+  "./data/games_roulette_database_merged.json",
+] as const;
 
 const FALLBACK_RAW_GAMES: RawGameEntry[] = [
   { id: 1, name: "Portal 2", url_stopgame: "https://stopgame.ru/game/portal_2", rating: 4.6 },
@@ -177,6 +183,31 @@ function loadGamesDb(): { games: GameEntry[]; source: DbSourceLabel; totalCount:
   return { games, source: "fallback", totalCount: FALLBACK_RAW_GAMES.length };
 }
 
+async function loadRemoteGamesDb(): Promise<{ games: GameEntry[]; totalCount: number } | null> {
+  if (typeof window === "undefined") return null;
+
+  for (const path of REMOTE_DB_PATHS) {
+    try {
+      const response = await fetch(path, { cache: "no-store" });
+      if (!response.ok) continue;
+
+      const json = (await response.json()) as UploadedGamesDatabase | RawGameEntry[];
+      const rawGames = normalizeRawDatabase(json);
+      if (rawGames.length === 0) continue;
+
+      const games = dedupeGames(rawGames.map(toGameEntry));
+      if (games.length === 0) continue;
+
+      window.localStorage.setItem(LOCAL_STORAGE_RAW_DB, JSON.stringify(json));
+      return { games, totalCount: rawGames.length };
+    } catch {
+      // try next path
+    }
+  }
+
+  return null;
+}
+
 function getRandomGames(items: GameEntry[], count: number): GameEntry[] {
   if (items.length === 0 || count <= 0) {
     return [];
@@ -258,7 +289,7 @@ function getHltbButtonHref(game: GameEntry | null): string {
 function getDbSourceText(source: DbSourceLabel): string {
   if (source === "window-db") return "window.__GAMES_ROULETTE_DB__";
   if (source === "window-raw-json") return "window.__GAMES_ROULETTE_RAW_DB__";
-  if (source === "localStorage-json") return "localStorage gamesRouletteRawDb";
+  if (source === "localStorage-json") return "remote/localStorage gamesRouletteRawDb";
   return "fallback demo db";
 }
 
@@ -288,6 +319,15 @@ function runSelfTests(): void {
   const visible = buildVisibleGames(randomTen, 0);
   console.assert(visible.length === VISIBLE_ROWS, "buildVisibleGames should return VISIBLE_ROWS items");
 
+  const normalizedObjectDb = normalizeRawDatabase({
+    total_games: 2,
+    games: [
+      { id: 1, name: "One", url_stopgame: "https://stopgame.ru/game/one", rating: 5 },
+      { id: 2, name: "Two", url_stopgame: "https://stopgame.ru/game/two", rating: 4 },
+    ],
+  });
+  console.assert(normalizedObjectDb.length === 2, "normalizeRawDatabase should read object databases");
+
   const sequence = buildSpinSequence(randomTen, 0, 15);
   console.assert(sequence.length === 22, "buildSpinSequence should create a stable render sequence");
 }
@@ -296,9 +336,9 @@ runSelfTests();
 
 export default function GameRouletteUI() {
   const initialDbState = useMemo(() => loadGamesDb(), []);
-  const [gamesDb] = useState<GameEntry[]>(() => initialDbState.games);
-  const [dbSource] = useState<DbSourceLabel>(initialDbState.source);
-  const [dbTotalCount] = useState<number>(initialDbState.totalCount);
+  const [gamesDb, setGamesDb] = useState<GameEntry[]>(() => initialDbState.games);
+  const [dbSource, setDbSource] = useState<DbSourceLabel>(initialDbState.source);
+  const [dbTotalCount, setDbTotalCount] = useState<number>(initialDbState.totalCount);
   const [spinPool, setSpinPool] = useState<GameEntry[]>(() =>
     getRandomGames(initialDbState.games, SPIN_POOL_SIZE),
   );
@@ -346,6 +386,27 @@ export default function GameRouletteUI() {
       window.localStorage.setItem(LOCAL_STORAGE_SOUND_VOLUME, String(soundVolume));
     }
   }, [soundVolume]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    void loadRemoteGamesDb().then((remoteDb) => {
+      if (isCancelled || !remoteDb || remoteDb.games.length === 0) return;
+
+      setGamesDb(remoteDb.games);
+      setDbSource("localStorage-json");
+      setDbTotalCount(remoteDb.totalCount);
+      setSpinPool(getRandomGames(remoteDb.games, SPIN_POOL_SIZE));
+      setSpinSequence(null);
+      setSpinTransition("none");
+      setSpinTranslate(0);
+      setCenterIndex(0);
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (spinPool.length > 0) {
@@ -580,9 +641,7 @@ export default function GameRouletteUI() {
             <div className="truncate pb-1 pt-4 text-center text-[28px] font-semibold leading-none tracking-[-0.03em] xl:text-[36px]">
               {selectedGame?.title ?? "—"}
             </div>
-            <div className="mt-3 rounded-full bg-white/10 px-3 py-2 text-center text-xs text-zinc-300">
-              База: {dbTotalCount} игр · источник: {getDbSourceText(dbSource)}
-            </div>
+            
           </div>
 
           <div className="mt-7 space-y-2.5 xl:space-y-3">
