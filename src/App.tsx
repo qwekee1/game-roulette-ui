@@ -387,8 +387,8 @@ export default function GameRouletteUI() {
                 <img src={selectedGame.assets.stopgameCoverUrl} alt={selectedGame.title} className="aspect-square w-full object-cover" />
               ) : (
                 <div className="flex aspect-square items-center justify-center bg-[radial-gradient(circle_at_70%_30%,rgba(255,190,92,0.35),transparent_28%),radial-gradient(circle_at_30%_70%,rgba(93,157,255,0.25),transparent_26%),linear-gradient(180deg,#f8f8f8,#dfe6ef)]">
-                  <div className="text-center leading-tight text-zinc-800">
-                    <div className="px-4 text-[14px] font-black tracking-[0.12em] xl:text-[16px]">
+                  <div className="text-center text-zinc-800">
+                    <div className="px-4 text-[14px] font-black leading-[1.15] tracking-[0.12em] xl:text-[16px]">
                       {selectedGame?.title?.toUpperCase() ?? 'WINNER'}
                     </div>
                     <div className="mt-2 whitespace-nowrap text-[10px] font-semibold tracking-[0.38em] text-zinc-600 xl:text-[12px]">
@@ -400,7 +400,7 @@ export default function GameRouletteUI() {
               )}
             </div>
 
-            <div className="truncate pb-1 pt-4 text-center text-[28px] font-semibold leading-none tracking-[-0.03em] xl:text-[36px]">
+            <div className="truncate pb-1 pt-4 text-center text-[28px] font-semibold leading-[1.12] tracking-[-0.03em] xl:text-[36px]">
               {selectedGame?.title ?? '—'}
             </div>
           </div>
@@ -417,7 +417,7 @@ export default function GameRouletteUI() {
                   onClick={() => setIsDifficultyOpen((prev: boolean) => !prev)}
                   className="relative inline-flex h-[42px] items-center rounded-full bg-white px-3 text-left text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:h-[48px] xl:px-4 xl:text-[18px]"
                 >
-                  <span className="block truncate">{difficulty ?? 'Выбрать'}</span>
+                  <span className="block truncate leading-[1.15]">{difficulty ?? 'Выбрать'}</span>
                 </button>
 
                 <div
@@ -436,7 +436,7 @@ export default function GameRouletteUI() {
                         setDifficulty(item);
                         setIsDifficultyOpen(false);
                       }}
-                      className="w-full rounded-full px-5 py-2.5 text-left text-[15px] font-medium text-black transition-colors duration-200 hover:bg-zinc-100 xl:px-6 xl:py-3 xl:text-[16px]"
+                      className="w-full rounded-full px-5 py-2.5 text-left text-[15px] font-medium leading-[1.15] text-black transition-colors duration-200 hover:bg-zinc-100 xl:px-6 xl:py-3 xl:text-[16px]"
                     >
                       {item}
                     </button>
@@ -462,7 +462,7 @@ export default function GameRouletteUI() {
                   rel="noopener noreferrer"
                   className="inline-flex h-[42px] items-center justify-center rounded-full bg-white px-3 text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:h-[48px] xl:px-4 xl:text-[18px]"
                 >
-                  <span className="block truncate">{item.label}</span>
+                  <span className="block truncate leading-[1.15]">{item.label}</span>
                 </a>
               ))}
             </div>
@@ -509,7 +509,7 @@ export default function GameRouletteUI() {
                       >
                         <span
                           className={[
-                            'max-w-full truncate whitespace-nowrap leading-none',
+                            'max-w-full truncate whitespace-nowrap leading-[1.15]',
                             isWinnerRow ? 'text-[24px] xl:text-[34px]' : 'text-[19px] xl:text-[28px]',
                           ].join(' ')}
                         >
@@ -539,7 +539,7 @@ export default function GameRouletteUI() {
               type="button"
               className="min-w-0 flex-1 inline-flex h-[46px] items-center justify-center truncate whitespace-nowrap rounded-full bg-white px-3 text-[16px] font-medium text-black xl:h-[52px] xl:px-4 xl:text-[18px]"
             >
-              Выбрать пресет игры
+              <span className="block truncate leading-[1.15]">Выбрать пресет игры</span>
             </button>
 
             <div className="relative">
@@ -548,7 +548,7 @@ export default function GameRouletteUI() {
                 onClick={() => setIsPresetOpen((prev: boolean) => !prev)}
                 className="flex h-[46px] w-[46px] items-center justify-center rounded-full bg-white text-[20px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:h-[52px] xl:w-[52px] xl:text-[24px]"
               >
-                {presetCount}
+                <span className="leading-[1.1]">{presetCount}</span>
               </button>
 
               <div
@@ -567,7 +567,7 @@ export default function GameRouletteUI() {
                       setPresetCount(num);
                       setIsPresetOpen(false);
                     }}
-                    className="block w-full rounded-full px-4 py-2 text-left text-[15px] font-medium text-black transition-colors duration-200 hover:bg-zinc-100"
+                    className="block w-full rounded-full px-4 py-2 text-left text-[15px] font-medium leading-[1.15] text-black transition-colors duration-200 hover:bg-zinc-100"
                   >
                     {num}
                   </button>
@@ -585,7 +585,7 @@ export default function GameRouletteUI() {
                   onClick={() => setSelectedGame(game)}
                   className="w-full truncate whitespace-nowrap rounded-full bg-white py-2.5 pl-7 pr-4 text-left text-[16px] font-medium text-black transition hover:translate-x-1 xl:py-3 xl:pl-8 xl:pr-5 xl:text-[18px]"
                 >
-                  {game.title}
+                  <span className="block truncate leading-[1.15]">{game.title}</span>
                 </button>
               ))}
             </div>
@@ -597,7 +597,7 @@ export default function GameRouletteUI() {
               onClick={() => setIsSettingsOpen(true)}
               className="inline-flex whitespace-nowrap rounded-full bg-white px-3 py-2.5 text-left text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:px-4 xl:py-3 xl:text-[18px]"
             >
-              Настройки
+              <span className="block truncate leading-[1.15]">Настройки</span>
             </button>
           </div>
         </aside>
@@ -617,8 +617,8 @@ export default function GameRouletteUI() {
         >
           <div className="mb-5 flex items-center justify-between">
             <div>
-              <h2 className="text-[26px] font-semibold text-white xl:text-[30px]">Настройки</h2>
-              <p className="mt-1 text-sm text-zinc-400 xl:text-base">
+              <h2 className="text-[26px] font-semibold leading-[1.12] text-white xl:text-[30px]">Настройки</h2>
+              <p className="mt-1 text-sm leading-[1.2] text-zinc-400 xl:text-base">
                 Пока здесь только звук. Фильтры по годам и рейтингу добавим позже.
               </p>
             </div>
@@ -635,8 +635,8 @@ export default function GameRouletteUI() {
             <div className="rounded-[26px] bg-[#101115] p-4 xl:p-5">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <div className="text-[18px] font-medium text-white xl:text-[20px]">Звуки</div>
-                  <div className="mt-1 text-sm text-zinc-400">Тики рулетки и звук победы</div>
+                  <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Звуки</div>
+                  <div className="mt-1 text-sm leading-[1.2] text-zinc-400">Тики рулетки и звук победы</div>
                 </div>
                 <button
                   type="button"
@@ -661,10 +661,10 @@ export default function GameRouletteUI() {
             <div className="rounded-[26px] bg-[#101115] p-4 xl:p-5">
               <div className="mb-4 flex items-center justify-between gap-4">
                 <div>
-                  <div className="text-[18px] font-medium text-white xl:text-[20px]">Громкость</div>
-                  <div className="mt-1 text-sm text-zinc-400">Общий уровень звука интерфейса</div>
+                  <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Громкость</div>
+                  <div className="mt-1 text-sm leading-[1.2] text-zinc-400">Общий уровень звука интерфейса</div>
                 </div>
-                <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium text-black xl:text-[18px]">
+                <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
                   {soundVolume}%
                 </div>
               </div>
@@ -736,7 +736,7 @@ function InfoRow({
 function Pill({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={`inline-flex h-[42px] items-center justify-center rounded-full bg-white px-3 text-[16px] font-medium text-black xl:h-[48px] xl:px-4 xl:text-[18px] ${className}`}>
-      <span className="block truncate">{children}</span>
+      <span className="block truncate leading-[1.15]">{children}</span>
     </div>
   );
 }
