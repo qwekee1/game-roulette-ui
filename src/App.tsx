@@ -193,6 +193,7 @@ export default function GameRouletteUI() {
 
   const spinTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const settleTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const finalizeTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const tickTimeoutsRef = useRef<Array<ReturnType<typeof window.setTimeout>>>([]);
 
@@ -213,6 +214,7 @@ export default function GameRouletteUI() {
     return () => {
       if (spinTimeoutRef.current !== null) window.clearTimeout(spinTimeoutRef.current);
       if (settleTimeoutRef.current !== null) window.clearTimeout(settleTimeoutRef.current);
+      if (finalizeTimeoutRef.current !== null) window.clearTimeout(finalizeTimeoutRef.current);
       tickTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
       tickTimeoutsRef.current = [];
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
@@ -320,6 +322,7 @@ export default function GameRouletteUI() {
 
     if (spinTimeoutRef.current !== null) window.clearTimeout(spinTimeoutRef.current);
     if (settleTimeoutRef.current !== null) window.clearTimeout(settleTimeoutRef.current);
+    if (finalizeTimeoutRef.current !== null) window.clearTimeout(finalizeTimeoutRef.current);
     clearTickTimeouts();
 
     const newRoundGames = getRandomGames(gamesDb, SPIN_POOL_SIZE);
@@ -361,18 +364,21 @@ export default function GameRouletteUI() {
       setSpinTranslate(-(totalSteps * STEP_DISTANCE));
 
       settleTimeoutRef.current = window.setTimeout(() => {
+        const finalVisibleGames = buildVisibleGames(repeatedPool, winnerIndex);
+
         setCenterIndex(winnerIndex);
         setSelectedGame(winner);
-        setSpinSequence(null);
+        setSpinTransition('none');
+        setSpinTranslate(0);
+        setSpinSequence(finalVisibleGames);
 
-        requestAnimationFrame(() => {
-          setSpinTransition('none');
-          setSpinTranslate(0);
-        });
+        finalizeTimeoutRef.current = window.setTimeout(() => {
+          setSpinSequence(null);
+          setIsSpinning(false);
+        }, 40);
 
         clearTickTimeouts();
         playWinSound();
-        setIsSpinning(false);
       }, 900);
     }, duration);
   };
@@ -408,8 +414,10 @@ export default function GameRouletteUI() {
               )}
             </div>
 
-            <div className="truncate pb-1 pt-4 text-center text-[28px] font-semibold leading-[1.12] tracking-[-0.03em] xl:text-[36px]">
-              {selectedGame?.title ?? ''}
+            <div className="flex h-[54px] items-center justify-center pt-4 xl:h-[64px]">
+              <div className="w-full truncate pb-1 text-center text-[28px] font-semibold leading-[1.12] tracking-[-0.03em] xl:text-[36px]">
+                {selectedGame?.title ?? '\u00A0'}
+              </div>
             </div>
           </div>
 
@@ -512,15 +520,15 @@ export default function GameRouletteUI() {
                     const isWinnerRow = index === WINNER_ROW_INDEX;
                     return (
                       <div
-                        key={`${game.id}-${index}-${centerIndex}-${spinSequence ? 'spin' : 'idle'}`}
+                        key={`${game.id}-${index}-${centerIndex}`}
                         className={[
-                          'relative flex h-[92px] flex-none items-center justify-center rounded-[999px] bg-[#dbdbdb] px-6 text-center',
+                          'relative flex h-[92px] flex-none items-center justify-center rounded-[999px] bg-[#dbdbdb] px-6 text-center transition-all duration-200',
                           isWinnerRow ? 'font-bold text-black' : 'font-semibold text-zinc-500',
                         ].join(' ')}
                       >
                         <span
                           className={[
-                            'max-w-full truncate whitespace-nowrap leading-[1.15]',
+                            'max-w-full truncate whitespace-nowrap leading-[1.15] transition-all duration-200',
                             isWinnerRow ? 'text-[24px] xl:text-[34px]' : 'text-[19px] xl:text-[28px]',
                           ].join(' ')}
                         >
