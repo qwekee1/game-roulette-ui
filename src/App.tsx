@@ -145,6 +145,20 @@ function getStopgameButtonHref(game: GameEntry | null): string {
   return game?.stopgameUrl ?? 'https://stopgame.ru/';
 }
 
+function buildSearchUrl(baseUrl: string, query: string): string {
+  const trimmed = query.trim();
+  if (!trimmed) return baseUrl;
+  return `${baseUrl}${encodeURIComponent(trimmed)}`;
+}
+
+function getSteamButtonHref(game: GameEntry | null): string {
+  return buildSearchUrl('https://store.steampowered.com/search/?term=', game?.title ?? '');
+}
+
+function getHltbButtonHref(game: GameEntry | null): string {
+  return buildSearchUrl('https://howlongtobeat.com/?q=', game?.title ?? '');
+}
+
 export default function GameRouletteUI() {
   const [gamesDb] = useState<GameEntry[]>(() => getGamesDb());
   const [spinPool, setSpinPool] = useState<GameEntry[]>(() => getRandomGames(getGamesDb(), SPIN_POOL_SIZE));
@@ -438,8 +452,8 @@ export default function GameRouletteUI() {
             <div className="flex flex-wrap gap-2.5 xl:gap-3">
               {[
                 { label: 'SG', href: getStopgameButtonHref(selectedGame) },
-                { label: 'Steam', href: 'https://store.steampowered.com/' },
-                { label: 'HLTB', href: 'https://howlongtobeat.com/' },
+                { label: 'Steam', href: getSteamButtonHref(selectedGame) },
+                { label: 'HLTB', href: getHltbButtonHref(selectedGame) },
               ].map((item) => (
                 <a
                   key={item.label}
@@ -611,7 +625,7 @@ export default function GameRouletteUI() {
             <button
               type="button"
               onClick={() => setIsSettingsOpen(false)}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-white text-xl font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98]"
+              className="inline-flex h-11 w-11 aspect-square items-center justify-center rounded-full bg-white text-xl leading-none text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98]"
             >
               ×
             </button>
