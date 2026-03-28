@@ -161,8 +161,8 @@ function getHltbButtonHref(game: GameEntry | null): string {
 
 export default function GameRouletteUI() {
   const [gamesDb] = useState<GameEntry[]>(() => getGamesDb());
-  const [spinPool, setSpinPool] = useState<GameEntry[]>(() => getRandomGames(getGamesDb(), SPIN_POOL_SIZE));
-  const [selectedGame, setSelectedGame] = useState<GameEntry | null>(() => null);
+  const [spinPool, setSpinPool] = useState<GameEntry[]>([]);
+  const [selectedGame, setSelectedGame] = useState<GameEntry | null>(null);
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
   const [isDifficultyOpen, setIsDifficultyOpen] = useState(false);
   const [isSpinning, setIsSpinning] = useState(false);
@@ -188,10 +188,10 @@ export default function GameRouletteUI() {
   const tickTimeoutsRef = useRef<Array<ReturnType<typeof window.setTimeout>>>([]);
 
   const repeatedSpinPool = useMemo(() => {
-    const base = spinPool.length > 0 ? spinPool : gamesDb.slice(0, SPIN_POOL_SIZE);
+    const base = spinPool.length > 0 ? spinPool : [];
     if (base.length === 0) return [];
     return Array.from({ length: 80 }, (_, index) => base[index % base.length]);
-  }, [gamesDb, spinPool]);
+  }, [spinPool]);
 
   useEffect(() => {
     window.localStorage.setItem('soundEnabled', JSON.stringify(isSoundEnabled));
@@ -200,13 +200,6 @@ export default function GameRouletteUI() {
   useEffect(() => {
     window.localStorage.setItem('soundVolume', String(soundVolume));
   }, [soundVolume]);
-
-  useEffect(() => {
-    if (spinPool.length > 0) {
-      setSelectedGame(spinPool[0]);
-      setCenterIndex(0);
-    }
-  }, [spinPool]);
 
   useEffect(() => {
     return () => {
@@ -338,7 +331,7 @@ export default function GameRouletteUI() {
     const sequence = buildSpinSequence(repeatedPool, spinStartIndex, totalSteps);
 
     setSpinPool(newRoundGames);
-    setSelectedGame(newRoundGames[0]);
+    setSelectedGame(null);
     setCenterIndex(spinStartIndex);
     setIsSpinning(true);
     setSpinSequence(sequence);
@@ -392,16 +385,18 @@ export default function GameRouletteUI() {
                       {selectedGame?.title?.toUpperCase() ?? 'WINNER'}
                     </div>
                     <div className="mt-2 whitespace-nowrap text-[10px] font-semibold tracking-[0.38em] text-zinc-600 xl:text-[12px]">
-                      WINNER
+                      {selectedGame ? 'WINNER' : ''}
                     </div>
-                    <div className="mt-10 whitespace-nowrap text-xs text-zinc-500 xl:text-sm">Обложка игры</div>
+                    <div className="mt-10 whitespace-nowrap text-xs text-zinc-500 xl:text-sm">
+                      {selectedGame ? 'Обложка игры' : ''}
+                    </div>
                   </div>
                 </div>
               )}
             </div>
 
             <div className="truncate pb-1 pt-4 text-center text-[28px] font-semibold leading-[1.12] tracking-[-0.03em] xl:text-[36px]">
-              {selectedGame?.title ?? '—'}
+              {selectedGame?.title ?? ''}
             </div>
           </div>
 
@@ -445,7 +440,7 @@ export default function GameRouletteUI() {
               </div>
             </div>
 
-            <InfoRow label="Игр в раунде" value={String(spinPool.length)} />
+            <InfoRow label="Игр в раунде" value={spinPool.length > 0 ? String(spinPool.length) : '—'} />
           </div>
 
           <div className="mt-auto pt-5">
@@ -579,14 +574,12 @@ export default function GameRouletteUI() {
           <div className="min-h-0 flex-1 overflow-y-auto pr-1">
             <div className="space-y-2.5 xl:space-y-3">
               {spinPool.map((game, index) => (
-                <button
+                <div
                   key={`${game.id}-${index}`}
-                  type="button"
-                  onClick={() => setSelectedGame(game)}
-                  className="w-full truncate whitespace-nowrap rounded-full bg-white py-2.5 pl-7 pr-4 text-left text-[16px] font-medium text-black transition hover:translate-x-1 xl:py-3 xl:pl-8 xl:pr-5 xl:text-[18px]"
+                  className="w-full truncate whitespace-nowrap rounded-full bg-white py-2.5 pl-7 pr-4 text-left text-[16px] font-medium text-black xl:py-3 xl:pl-8 xl:pr-5 xl:text-[18px]"
                 >
                   <span className="block truncate leading-[1.15]">{game.title}</span>
-                </button>
+                </div>
               ))}
             </div>
           </div>
@@ -618,7 +611,7 @@ export default function GameRouletteUI() {
           <div className="mb-5 flex items-center justify-between">
             <div>
               <h2 className="text-[26px] font-semibold leading-[1.12] text-white xl:text-[30px]">Настройки</h2>
-              <p className="mt-1 text-sm leading-[1.2] text-zinc-400 xl:text-base">
+              <p className="mt-1 text-sm leading-[1.2] text-zinc-400">
                 Пока здесь только звук. Фильтры по годам и рейтингу добавим позже.
               </p>
             </div>
