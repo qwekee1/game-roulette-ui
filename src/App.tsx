@@ -13,6 +13,7 @@ type RawGameEntry = {
   url_stopgame: string;
   rating?: number | null;
   weight?: number | null;
+  year_range?: string | null;
 };
 
 type RawDatabase = {
@@ -25,6 +26,10 @@ type GameEntry = {
   title: string;
   stopgameUrl: string;
   stopgameSlug?: string;
+  ratingValue: number | null;
+  yearRangeRaw: string | null;
+  yearStart: number | null;
+  yearEnd: number | null;
   rating?: {
     value?: number | null;
     text?: string | null;
@@ -61,16 +66,69 @@ const VISIBLE_TRACK_HEIGHT =
   VISIBLE_ROWS * LANE_ITEM_HEIGHT + (VISIBLE_ROWS - 1) * STEP_GAP;
 const SPIN_POOL_SIZE = 10;
 
+const MIN_RATING = 0;
+const MAX_RATING = 5;
+const MIN_YEAR = 1980;
+const MAX_YEAR = 2025;
+
+const LS_SOUND_ENABLED = 'soundEnabled';
+const LS_SOUND_VOLUME = 'soundVolume';
+const LS_RATING_MIN = 'rouletteRatingMin';
+const LS_RATING_MAX = 'rouletteRatingMax';
+const LS_YEAR_MIN = 'rouletteYearMin';
+const LS_YEAR_MAX = 'rouletteYearMax';
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function parseYearRange(yearRange?: string | null): { start: number | null; end: number | null } {
+  if (!yearRange) return { start: null, end: null };
+
+  const match = yearRange.match(/(\d{4})\D+(\d{4})/);
+  if (match) {
+    const start = Number(match[1]);
+    const end = Number(match[2]);
+    if (Number.isFinite(start) && Number.isFinite(end)) {
+      return {
+        start: Math.min(start, end),
+        end: Math.max(start, end),
+      };
+    }
+  }
+
+  const single = yearRange.match(/(\d{4})/);
+  if (single) {
+    const year = Number(single[1]);
+    if (Number.isFinite(year)) {
+      return { start: year, end: year };
+    }
+  }
+
+  return { start: null, end: null };
+}
+
 function toGameEntry(raw: RawGameEntry): GameEntry {
+  const parsedYears = parseYearRange(raw.year_range);
+
   return {
     id: String(raw.id),
     title: raw.name,
     stopgameUrl: raw.url_stopgame,
     stopgameSlug: raw.url_stopgame.split('/').filter(Boolean).pop(),
+    ratingValue: typeof raw.rating === 'number' ? raw.rating : null,
+    yearRangeRaw: raw.year_range ?? null,
+    yearStart: parsedYears.start,
+    yearEnd: parsedYears.end,
     rating: {
       value: raw.rating ?? null,
       text: typeof raw.rating === 'number' ? raw.rating.toFixed(1) : null,
       allObservedValues: typeof raw.rating === 'number' ? [raw.rating.toFixed(1)] : [],
+    },
+    period: {
+      label: raw.year_range ?? '—',
+      startYear: parsedYears.start ?? undefined,
+      endYear: parsedYears.end ?? undefined,
     },
     assets: {
       stopgameCoverUrl: null,
@@ -167,6 +225,29 @@ function getPlaceholderRows(count: number): Array<{ id: string; title: string }>
   }));
 }
 
+function matchesFilters(
+  game: GameEntry,
+  ratingMin: number,
+  ratingMax: number,
+  yearMin: number,
+  yearMax: number,
+): boolean {
+  const rating = game.ratingValue ?? 0;
+  if (rating < ratingMin || rating > ratingMax) return false;
+
+  const start = game.yearStart ?? MIN_YEAR;
+  const end = game.yearEnd ?? MAX_YEAR;
+
+  return end >= yearMin && start <= yearMax;
+}
+
+function readNumberFromStorage(key: string, fallback: number): number {
+  const raw = window.localStorage.getItem(key);
+  if (raw === null) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 export default function GameRouletteUI() {
   const [gamesDb] = useState<GameEntry[]>(() => getGamesDb());
   const [spinPool, setSpinPool] = useState<GameEntry[]>([]);
@@ -182,14 +263,28 @@ export default function GameRouletteUI() {
   const [presetCount, setPresetCount] = useState<number>(0);
   const [isPresetOpen, setIsPresetOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   const [isSoundEnabled, setIsSoundEnabled] = useState<boolean>(() => {
-    const saved = window.localStorage.getItem('soundEnabled');
+    const saved = window.localStorage.getItem(LS_SOUND_ENABLED);
     return saved !== null ? JSON.parse(saved) : true;
   });
   const [soundVolume, setSoundVolume] = useState<number>(() => {
-    const saved = window.localStorage.getItem('soundVolume');
+    const saved = window.localStorage.getItem(LS_SOUND_VOLUME);
     return saved !== null ? Number(saved) : 70;
   });
+
+  const [ratingMin, setRatingMin] = useState<number>(() =>
+    clamp(readNumberFromStorage(LS_RATING_MIN, MIN_RATING), MIN_RATING, MAX_RATING),
+  );
+  const [ratingMax, setRatingMax] = useState<number>(() =>
+    clamp(readNumberFromStorage(LS_RATING_MAX, MAX_RATING), MIN_RATING, MAX_RATING),
+  );
+  const [yearMin, setYearMin] = useState<number>(() =>
+    clamp(readNumberFromStorage(LS_YEAR_MIN, MIN_YEAR), MIN_YEAR, MAX_YEAR),
+  );
+  const [yearMax, setYearMax] = useState<number>(() =>
+    clamp(readNumberFromStorage(LS_YEAR_MAX, MAX_YEAR), MIN_YEAR, MAX_YEAR),
+  );
 
   const spinTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const settleTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
@@ -197,18 +292,61 @@ export default function GameRouletteUI() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const tickTimeoutsRef = useRef<Array<ReturnType<typeof window.setTimeout>>>([]);
 
+  const filteredGamesDb = useMemo(() => {
+    const safeRatingMin = Math.min(ratingMin, ratingMax);
+    const safeRatingMax = Math.max(ratingMin, ratingMax);
+    const safeYearMin = Math.min(yearMin, yearMax);
+    const safeYearMax = Math.max(yearMin, yearMax);
+
+    return gamesDb.filter((game) =>
+      matchesFilters(game, safeRatingMin, safeRatingMax, safeYearMin, safeYearMax),
+    );
+  }, [gamesDb, ratingMin, ratingMax, yearMin, yearMax]);
+
   const repeatedSpinPool = useMemo(() => {
     if (spinPool.length === 0) return [];
     return Array.from({ length: 120 }, (_, index) => spinPool[index % spinPool.length]);
   }, [spinPool]);
 
   useEffect(() => {
-    window.localStorage.setItem('soundEnabled', JSON.stringify(isSoundEnabled));
+    window.localStorage.setItem(LS_SOUND_ENABLED, JSON.stringify(isSoundEnabled));
   }, [isSoundEnabled]);
 
   useEffect(() => {
-    window.localStorage.setItem('soundVolume', String(soundVolume));
+    window.localStorage.setItem(LS_SOUND_VOLUME, String(soundVolume));
   }, [soundVolume]);
+
+  useEffect(() => {
+    window.localStorage.setItem(LS_RATING_MIN, String(ratingMin));
+    window.localStorage.setItem(LS_RATING_MAX, String(ratingMax));
+    window.localStorage.setItem(LS_YEAR_MIN, String(yearMin));
+    window.localStorage.setItem(LS_YEAR_MAX, String(yearMax));
+  }, [ratingMin, ratingMax, yearMin, yearMax]);
+
+  useEffect(() => {
+    if (selectedGame && !filteredGamesDb.some((game) => game.id === selectedGame.id)) {
+      setSelectedGame(null);
+    }
+
+    if (spinPool.length > 0) {
+      const filteredPool = spinPool.filter((game) =>
+        filteredGamesDb.some((allowedGame) => allowedGame.id === game.id),
+      );
+      if (filteredPool.length !== spinPool.length) {
+        setSpinPool(filteredPool);
+      }
+    }
+
+    if (filteredGamesDb.length === 0) {
+      setSpinPool([]);
+      setSelectedGame(null);
+      setHasSpun(false);
+      setSpinSequence(null);
+      setSpinTransition('none');
+      setSpinTranslate(0);
+      setCenterIndex(0);
+    }
+  }, [filteredGamesDb, selectedGame, spinPool]);
 
   useEffect(() => {
     return () => {
@@ -318,14 +456,14 @@ export default function GameRouletteUI() {
   };
 
   const handleSpin = () => {
-    if (isSpinning || gamesDb.length === 0) return;
+    if (isSpinning || filteredGamesDb.length === 0) return;
 
     if (spinTimeoutRef.current !== null) window.clearTimeout(spinTimeoutRef.current);
     if (settleTimeoutRef.current !== null) window.clearTimeout(settleTimeoutRef.current);
     if (finalizeTimeoutRef.current !== null) window.clearTimeout(finalizeTimeoutRef.current);
     clearTickTimeouts();
 
-    const newRoundGames = getRandomGames(gamesDb, SPIN_POOL_SIZE);
+    const newRoundGames = getRandomGames(filteredGamesDb, SPIN_POOL_SIZE);
     if (newRoundGames.length === 0) return;
 
     const repeatedPool = Array.from(
@@ -386,6 +524,22 @@ export default function GameRouletteUI() {
   const rightColumnItems = hasSpun ? spinPool : [];
   const rightPlaceholders = !hasSpun ? getPlaceholderRows(SPIN_POOL_SIZE) : [];
 
+  const ratingTrackStyle = (min: number, max: number) => {
+    const left = ((min - MIN_RATING) / (MAX_RATING - MIN_RATING)) * 100;
+    const right = ((max - MIN_RATING) / (MAX_RATING - MIN_RATING)) * 100;
+    return {
+      background: `linear-gradient(to right, #52525b 0%, #52525b ${left}%, #22c55e ${left}%, #22c55e ${right}%, #52525b ${right}%, #52525b 100%)`,
+    };
+  };
+
+  const yearTrackStyle = (min: number, max: number) => {
+    const left = ((min - MIN_YEAR) / (MAX_YEAR - MIN_YEAR)) * 100;
+    const right = ((max - MIN_YEAR) / (MAX_YEAR - MIN_YEAR)) * 100;
+    return {
+      background: `linear-gradient(to right, #52525b 0%, #52525b ${left}%, #22c55e ${left}%, #22c55e ${right}%, #52525b ${right}%, #52525b 100%)`,
+    };
+  };
+
   return (
     <div
       className="relative h-screen w-screen overflow-hidden bg-[#090a0d] text-white"
@@ -424,44 +578,8 @@ export default function GameRouletteUI() {
           <div className="mt-7 space-y-2.5 xl:space-y-3">
             <InfoRow label="Оценка" value={getRatingText(selectedGame)} />
             <InfoRow label="Период" value={getPeriodText(selectedGame)} />
-
-            <div className="flex items-center gap-2.5 xl:gap-3">
-              <Pill>Сложность</Pill>
-              <div className="relative min-w-0 flex-1">
-                <button
-                  type="button"
-                  onClick={() => setIsDifficultyOpen((prev: boolean) => !prev)}
-                  className="relative inline-flex h-[42px] items-center rounded-full bg-white px-3 text-left text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:h-[48px] xl:px-4 xl:text-[18px]"
-                >
-                  <span className="block truncate leading-[1.15]">{difficulty ?? 'Выбрать'}</span>
-                </button>
-
-                <div
-                  className={[
-                    'absolute left-0 right-0 top-[calc(100%+10px)] z-20 origin-top rounded-[24px] bg-white p-2 shadow-2xl transition-all duration-200 ease-out',
-                    isDifficultyOpen
-                      ? 'pointer-events-auto translate-y-0 scale-100 opacity-100'
-                      : 'pointer-events-none -translate-y-2 scale-95 opacity-0',
-                  ].join(' ')}
-                >
-                  {DIFFICULTIES.map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => {
-                        setDifficulty(item);
-                        setIsDifficultyOpen(false);
-                      }}
-                      className="w-full rounded-full px-5 py-2.5 text-left text-[15px] font-medium leading-[1.15] text-black transition-colors duration-200 hover:bg-zinc-100 xl:px-6 xl:py-3 xl:text-[16px]"
-                    >
-                      {item}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
             <InfoRow label="Игр в раунде" value={hasSpun ? String(spinPool.length) : '—'} />
+            <InfoRow label="Доступно" value={String(filteredGamesDb.length)} />
           </div>
 
           <div className="mt-auto pt-5">
@@ -543,10 +661,10 @@ export default function GameRouletteUI() {
               <button
                 type="button"
                 onClick={handleSpin}
-                disabled={isSpinning}
+                disabled={isSpinning || filteredGamesDb.length === 0}
                 className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full bg-black px-5 py-2.5 text-[16px] font-medium text-white transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-80 xl:px-6 xl:py-3 xl:text-[18px]"
               >
-                {isSpinning ? 'Крутим...' : 'Мне повезет!'}
+                {filteredGamesDb.length === 0 ? 'Нет игр по фильтрам' : isSpinning ? 'Крутим...' : 'Мне повезет!'}
               </button>
             </div>
           </div>
@@ -641,7 +759,7 @@ export default function GameRouletteUI() {
       >
         <div
           className={[
-            'w-full max-w-[460px] rounded-[32px] bg-[#17191e] p-6 shadow-2xl transition-all duration-300 ease-out xl:p-7',
+            'w-full max-w-[520px] rounded-[32px] bg-[#17191e] p-6 shadow-2xl transition-all duration-300 ease-out xl:p-7',
             isSettingsOpen ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-4 scale-95 opacity-0',
           ].join(' ')}
         >
@@ -649,7 +767,7 @@ export default function GameRouletteUI() {
             <div>
               <h2 className="text-[26px] font-semibold leading-[1.12] text-white xl:text-[30px]">Настройки</h2>
               <p className="mt-1 text-sm leading-[1.2] text-zinc-400">
-                Пока здесь только звук. Фильтры по годам и рейтингу добавим позже.
+                Выбери диапазон рейтинга и годов выхода игр.
               </p>
             </div>
             <button
@@ -711,33 +829,120 @@ export default function GameRouletteUI() {
                   background: `linear-gradient(to right, #22c55e ${soundVolume}%, #52525b ${soundVolume}%)`,
                 }}
               />
+            </div>
 
-              <style>{`
-                .slider::-webkit-slider-thumb {
-                  appearance: none;
-                  width: 20px;
-                  height: 20px;
-                  border-radius: 999px;
-                  background: #ffffff;
-                  cursor: pointer;
-                  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-                  border: none;
-                  transition: transform 0.15s ease;
-                }
-                .slider::-webkit-slider-thumb:hover {
-                  transform: scale(1.1);
-                }
-                .slider::-moz-range-thumb {
-                  width: 20px;
-                  height: 20px;
-                  border-radius: 999px;
-                  background: #ffffff;
-                  cursor: pointer;
-                  border: none;
-                }
-              `}</style>
+            <div className="rounded-[26px] bg-[#101115] p-4 xl:p-5">
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Рейтинг</div>
+                  <div className="mt-1 text-sm leading-[1.2] text-zinc-400">От {ratingMin.toFixed(1)} до {ratingMax.toFixed(1)}</div>
+                </div>
+                <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
+                  {ratingMin.toFixed(1)}–{ratingMax.toFixed(1)}
+                </div>
+              </div>
+
+              <div className="relative pt-2">
+                <input
+                  type="range"
+                  min={MIN_RATING}
+                  max={MAX_RATING}
+                  step={0.1}
+                  value={ratingMin}
+                  onChange={(event) => {
+                    const next = Number(event.target.value);
+                    setRatingMin(Math.min(next, ratingMax));
+                  }}
+                  className="slider absolute left-0 top-2 h-3 w-full cursor-pointer appearance-none rounded-full bg-transparent"
+                  style={ratingTrackStyle(ratingMin, ratingMax)}
+                />
+                <input
+                  type="range"
+                  min={MIN_RATING}
+                  max={MAX_RATING}
+                  step={0.1}
+                  value={ratingMax}
+                  onChange={(event) => {
+                    const next = Number(event.target.value);
+                    setRatingMax(Math.max(next, ratingMin));
+                  }}
+                  className="slider absolute left-0 top-2 h-3 w-full cursor-pointer appearance-none rounded-full bg-transparent"
+                  style={ratingTrackStyle(ratingMin, ratingMax)}
+                />
+                <div className="h-7" />
+              </div>
+            </div>
+
+            <div className="rounded-[26px] bg-[#101115] p-4 xl:p-5">
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Годы</div>
+                  <div className="mt-1 text-sm leading-[1.2] text-zinc-400">От {yearMin} до {yearMax}</div>
+                </div>
+                <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
+                  {yearMin}–{yearMax}
+                </div>
+              </div>
+
+              <div className="relative pt-2">
+                <input
+                  type="range"
+                  min={MIN_YEAR}
+                  max={MAX_YEAR}
+                  step={1}
+                  value={yearMin}
+                  onChange={(event) => {
+                    const next = Number(event.target.value);
+                    setYearMin(Math.min(next, yearMax));
+                  }}
+                  className="slider absolute left-0 top-2 h-3 w-full cursor-pointer appearance-none rounded-full bg-transparent"
+                  style={yearTrackStyle(yearMin, yearMax)}
+                />
+                <input
+                  type="range"
+                  min={MIN_YEAR}
+                  max={MAX_YEAR}
+                  step={1}
+                  value={yearMax}
+                  onChange={(event) => {
+                    const next = Number(event.target.value);
+                    setYearMax(Math.max(next, yearMin));
+                  }}
+                  className="slider absolute left-0 top-2 h-3 w-full cursor-pointer appearance-none rounded-full bg-transparent"
+                  style={yearTrackStyle(yearMin, yearMax)}
+                />
+                <div className="h-7" />
+              </div>
             </div>
           </div>
+
+          <style>{`
+            .slider::-webkit-slider-thumb {
+              appearance: none;
+              width: 20px;
+              height: 20px;
+              border-radius: 999px;
+              background: #ffffff;
+              cursor: pointer;
+              box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+              border: none;
+              transition: transform 0.15s ease;
+              pointer-events: auto;
+              position: relative;
+            }
+            .slider::-webkit-slider-thumb:hover {
+              transform: scale(1.1);
+            }
+            .slider::-moz-range-thumb {
+              width: 20px;
+              height: 20px;
+              border-radius: 999px;
+              background: #ffffff;
+              cursor: pointer;
+              border: none;
+              pointer-events: auto;
+            }
+          `}</style>
         </div>
       </div>
     </div>
