@@ -54,8 +54,8 @@ const DIFFICULTIES: Difficulty[] = ['Легкая', 'Нормальная', 'С�
 const LANE_ITEM_HEIGHT = 92;
 const STEP_GAP = 10;
 const STEP_DISTANCE = LANE_ITEM_HEIGHT + STEP_GAP;
-const VISIBLE_ROWS = 8;
-const WINNER_ROW_INDEX = 3;
+const VISIBLE_ROWS = 9;
+const WINNER_ROW_INDEX = 4;
 const SPIN_OVERSHOOT = 22;
 const VISIBLE_TRACK_HEIGHT =
   VISIBLE_ROWS * LANE_ITEM_HEIGHT + (VISIBLE_ROWS - 1) * STEP_GAP;
@@ -198,7 +198,7 @@ export default function GameRouletteUI() {
 
   const repeatedSpinPool = useMemo(() => {
     if (spinPool.length === 0) return [];
-    return Array.from({ length: 80 }, (_, index) => spinPool[index % spinPool.length]);
+    return Array.from({ length: 120 }, (_, index) => spinPool[index % spinPool.length]);
   }, [spinPool]);
 
   useEffect(() => {
@@ -326,7 +326,7 @@ export default function GameRouletteUI() {
     if (newRoundGames.length === 0) return;
 
     const repeatedPool = Array.from(
-      { length: Math.max(80, newRoundGames.length * 8) },
+      { length: Math.max(120, newRoundGames.length * 12) },
       (_, index) => newRoundGames[index % newRoundGames.length],
     );
 
@@ -478,7 +478,7 @@ export default function GameRouletteUI() {
         </aside>
 
         <main className="min-w-0 flex-1 rounded-[34px] bg-[#ececec] p-3">
-          <div className="relative h-full rounded-[30px] bg-[#ececec] px-1 py-1">
+          <div className="relative h-full rounded-[30px] bg-[#ececec] p-1">
             <div className="relative h-full overflow-hidden rounded-[28px]">
               <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 -translate-y-1/2">
                 <div className="relative h-[92px]">
@@ -536,7 +536,7 @@ export default function GameRouletteUI() {
                 type="button"
                 onClick={handleSpin}
                 disabled={isSpinning}
-                className="absolute bottom-6 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full bg-black px-5 py-2.5 text-[16px] font-medium text-white transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-80 xl:px-6 xl:py-3 xl:text-[18px]"
+                className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full bg-black px-5 py-2.5 text-[16px] font-medium text-white transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-80 xl:px-6 xl:py-3 xl:text-[18px]"
               >
                 {isSpinning ? 'Крутим...' : 'Мне повезет!'}
               </button>
