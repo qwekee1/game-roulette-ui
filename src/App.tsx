@@ -50,10 +50,11 @@ type GameEntry = {
 
 const database = rawDatabase as RawDatabase;
 const DIFFICULTIES: Difficulty[] = ['Легкая', 'Нормальная', 'Сложная'];
+
 const LANE_ITEM_HEIGHT = 92;
 const STEP_GAP = 10;
 const STEP_DISTANCE = LANE_ITEM_HEIGHT + STEP_GAP;
-const VISIBLE_ROWS = 7;
+const VISIBLE_ROWS = 8;
 const WINNER_ROW_INDEX = 3;
 const SPIN_OVERSHOOT = 22;
 const VISIBLE_TRACK_HEIGHT =
@@ -159,6 +160,13 @@ function getHltbButtonHref(game: GameEntry | null): string {
   return buildSearchUrl('https://howlongtobeat.com/?q=', game?.title ?? '');
 }
 
+function getPlaceholderRows(count: number): Array<{ id: string; title: string }> {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `placeholder-${index}`,
+    title: '',
+  }));
+}
+
 export default function GameRouletteUI() {
   const [gamesDb] = useState<GameEntry[]>(() => getGamesDb());
   const [spinPool, setSpinPool] = useState<GameEntry[]>([]);
@@ -166,6 +174,7 @@ export default function GameRouletteUI() {
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
   const [isDifficultyOpen, setIsDifficultyOpen] = useState(false);
   const [isSpinning, setIsSpinning] = useState(false);
+  const [hasSpun, setHasSpun] = useState(false);
   const [centerIndex, setCenterIndex] = useState(0);
   const [spinTranslate, setSpinTranslate] = useState(0);
   const [spinTransition, setSpinTransition] = useState('none');
@@ -188,9 +197,8 @@ export default function GameRouletteUI() {
   const tickTimeoutsRef = useRef<Array<ReturnType<typeof window.setTimeout>>>([]);
 
   const repeatedSpinPool = useMemo(() => {
-    const base = spinPool.length > 0 ? spinPool : [];
-    if (base.length === 0) return [];
-    return Array.from({ length: 80 }, (_, index) => base[index % base.length]);
+    if (spinPool.length === 0) return [];
+    return Array.from({ length: 80 }, (_, index) => spinPool[index % spinPool.length]);
   }, [spinPool]);
 
   useEffect(() => {
@@ -218,7 +226,8 @@ export default function GameRouletteUI() {
     return buildVisibleGames(repeatedSpinPool, centerIndex);
   }, [centerIndex, repeatedSpinPool]);
 
-  const laneGames = spinSequence ?? visibleGames;
+  const placeholderCenterRows = useMemo(() => getPlaceholderRows(VISIBLE_ROWS), []);
+  const laneGames = hasSpun ? spinSequence ?? visibleGames : placeholderCenterRows;
 
   const getAudioContext = () => {
     const audioWindow = window as Window & { webkitAudioContext?: AudioContextCtor };
@@ -330,6 +339,7 @@ export default function GameRouletteUI() {
     const duration = 5600 + totalSteps * 70;
     const sequence = buildSpinSequence(repeatedPool, spinStartIndex, totalSteps);
 
+    setHasSpun(true);
     setSpinPool(newRoundGames);
     setSelectedGame(null);
     setCenterIndex(spinStartIndex);
@@ -367,6 +377,9 @@ export default function GameRouletteUI() {
     }, duration);
   };
 
+  const rightColumnItems = hasSpun ? spinPool : [];
+  const rightPlaceholders = !hasSpun ? getPlaceholderRows(SPIN_POOL_SIZE) : [];
+
   return (
     <div
       className="relative h-screen w-screen overflow-hidden bg-[#090a0d] text-white"
@@ -382,7 +395,7 @@ export default function GameRouletteUI() {
                 <div className="flex aspect-square items-center justify-center bg-[radial-gradient(circle_at_70%_30%,rgba(255,190,92,0.35),transparent_28%),radial-gradient(circle_at_30%_70%,rgba(93,157,255,0.25),transparent_26%),linear-gradient(180deg,#f8f8f8,#dfe6ef)]">
                   <div className="text-center text-zinc-800">
                     <div className="px-4 text-[14px] font-black leading-[1.15] tracking-[0.12em] xl:text-[16px]">
-                      {selectedGame?.title?.toUpperCase() ?? 'WINNER'}
+                      {selectedGame?.title?.toUpperCase() ?? ''}
                     </div>
                     <div className="mt-2 whitespace-nowrap text-[10px] font-semibold tracking-[0.38em] text-zinc-600 xl:text-[12px]">
                       {selectedGame ? 'WINNER' : ''}
@@ -440,7 +453,7 @@ export default function GameRouletteUI() {
               </div>
             </div>
 
-            <InfoRow label="Игр в раунде" value={spinPool.length > 0 ? String(spinPool.length) : '—'} />
+            <InfoRow label="Игр в раунде" value={hasSpun ? String(spinPool.length) : '—'} />
           </div>
 
           <div className="mt-auto pt-5">
@@ -465,8 +478,8 @@ export default function GameRouletteUI() {
         </aside>
 
         <main className="min-w-0 flex-1 rounded-[34px] bg-[#ececec] p-3">
-          <div className="relative flex h-full min-h-0 flex-col rounded-[30px] bg-[#ececec] px-1 pb-[84px] pt-1 xl:pb-[96px]">
-            <div className="relative min-h-0 flex-1 overflow-hidden rounded-[28px]">
+          <div className="relative h-full rounded-[30px] bg-[#ececec] px-1 py-1">
+            <div className="relative h-full overflow-hidden rounded-[28px]">
               <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 -translate-y-1/2">
                 <div className="relative h-[92px]">
                   <div className="absolute left-2 top-1/2 -translate-y-1/2">
@@ -483,7 +496,10 @@ export default function GameRouletteUI() {
                 </div>
               </div>
 
-              <div className="absolute inset-x-0 top-1/2 overflow-hidden -translate-y-1/2" style={{ height: `${VISIBLE_TRACK_HEIGHT}px` }}>
+              <div
+                className="absolute inset-x-0 top-1/2 overflow-hidden -translate-y-1/2"
+                style={{ height: `${VISIBLE_TRACK_HEIGHT}px` }}
+              >
                 <div
                   className="flex flex-col gap-[10px]"
                   style={{
@@ -515,16 +531,16 @@ export default function GameRouletteUI() {
                   })}
                 </div>
               </div>
-            </div>
 
-            <button
-              type="button"
-              onClick={handleSpin}
-              disabled={isSpinning}
-              className="absolute bottom-5 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full bg-black px-5 py-2.5 text-[16px] font-medium text-white transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-80 xl:bottom-6 xl:px-6 xl:py-3 xl:text-[18px]"
-            >
-              {isSpinning ? 'Крутим...' : 'Мне повезет!'}
-            </button>
+              <button
+                type="button"
+                onClick={handleSpin}
+                disabled={isSpinning}
+                className="absolute bottom-6 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full bg-black px-5 py-2.5 text-[16px] font-medium text-white transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-80 xl:px-6 xl:py-3 xl:text-[18px]"
+              >
+                {isSpinning ? 'Крутим...' : 'Мне повезет!'}
+              </button>
+            </div>
           </div>
         </main>
 
@@ -573,14 +589,27 @@ export default function GameRouletteUI() {
 
           <div className="min-h-0 flex-1 overflow-y-auto pr-1">
             <div className="space-y-2.5 xl:space-y-3">
-              {spinPool.map((game, index) => (
-                <div
-                  key={`${game.id}-${index}`}
-                  className="w-full truncate whitespace-nowrap rounded-full bg-white py-2.5 pl-7 pr-4 text-left text-[16px] font-medium text-black xl:py-3 xl:pl-8 xl:pr-5 xl:text-[18px]"
-                >
-                  <span className="block truncate leading-[1.15]">{game.title}</span>
-                </div>
-              ))}
+              {!hasSpun &&
+                rightPlaceholders.map((item) => (
+                  <div
+                    key={item.id}
+                    className="w-full rounded-full bg-white py-2.5 pl-7 pr-4 text-left text-[16px] font-medium text-black xl:py-3 xl:pl-8 xl:pr-5 xl:text-[18px]"
+                  >
+                    <span className="block truncate leading-[1.15]">&nbsp;</span>
+                  </div>
+                ))}
+
+              {hasSpun &&
+                rightColumnItems.map((game, index) => (
+                  <button
+                    key={`${game.id}-${index}`}
+                    type="button"
+                    onClick={() => setSelectedGame(game)}
+                    className="w-full truncate whitespace-nowrap rounded-full bg-white py-2.5 pl-7 pr-4 text-left text-[16px] font-medium text-black transition hover:translate-x-1 xl:py-3 xl:pl-8 xl:pr-5 xl:text-[18px]"
+                  >
+                    <span className="block truncate leading-[1.15]">{game.title}</span>
+                  </button>
+                ))}
             </div>
           </div>
 
