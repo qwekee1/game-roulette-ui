@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import rawDatabase from './data/games_roulette_database_merged.json';
 
 type Difficulty = 'Легкая' | 'Нормальная' | 'Сложная';
@@ -84,7 +84,7 @@ const LS_PERIOD_MAX_INDEX = 'roulettePeriodMaxIndex';
 const LS_ROUND_SIZE = 'rouletteRoundSize';
 
 const THUMB_SIZE_PX = 20;
-const MIN_VISUAL_THUMB_GAP_PX = 16;
+const OVERLAP_THUMB_OFFSET_PX = 8;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -282,25 +282,6 @@ function DualRangeSlider({
   onMinChange,
   onMaxChange,
 }: RangeSliderProps) {
-  const trackRef = useRef<HTMLDivElement | null>(null);
-  const [trackWidth, setTrackWidth] = useState(0);
-
-  useLayoutEffect(() => {
-    const node = trackRef.current;
-    if (!node) return;
-
-    const updateWidth = () => {
-      setTrackWidth(node.getBoundingClientRect().width);
-    };
-
-    updateWidth();
-
-    const observer = new ResizeObserver(() => updateWidth());
-    observer.observe(node);
-
-    return () => observer.disconnect();
-  }, []);
-
   const range = max - min;
   const safeRange = range === 0 ? 1 : range;
   const leftPercent = ((minValue - min) / safeRange) * 100;
@@ -309,29 +290,26 @@ function DualRangeSlider({
   const leftOffsetPx = minValue === min ? 0 : THUMB_SIZE_PX / 2;
   const rightOffsetPx = maxValue === max ? 0 : THUMB_SIZE_PX / 2;
 
-  const distancePercent = Math.max(0, rightPercent - leftPercent);
-  const distancePx = (distancePercent / 100) * trackWidth;
+  const isExactlySameValue = minValue === maxValue;
 
   let minThumbShiftPx = 0;
   let maxThumbShiftPx = 0;
 
-  if (trackWidth > 0 && distancePx < MIN_VISUAL_THUMB_GAP_PX) {
-    const missingGap = (MIN_VISUAL_THUMB_GAP_PX - distancePx) / 2;
-
+  if (isExactlySameValue) {
     if (minValue === min && maxValue === min) {
       minThumbShiftPx = 0;
-      maxThumbShiftPx = missingGap * 2;
+      maxThumbShiftPx = OVERLAP_THUMB_OFFSET_PX;
     } else if (minValue === max && maxValue === max) {
-      minThumbShiftPx = -missingGap * 2;
+      minThumbShiftPx = -OVERLAP_THUMB_OFFSET_PX;
       maxThumbShiftPx = 0;
     } else {
-      minThumbShiftPx = -missingGap;
-      maxThumbShiftPx = missingGap;
+      minThumbShiftPx = -OVERLAP_THUMB_OFFSET_PX;
+      maxThumbShiftPx = OVERLAP_THUMB_OFFSET_PX;
     }
   }
 
   return (
-    <div ref={trackRef} className="relative h-8">
+    <div className="relative h-8">
       <div className="absolute top-1/2 h-3 w-full -translate-y-1/2 rounded-full bg-zinc-600" />
 
       <div
@@ -343,14 +321,14 @@ function DualRangeSlider({
       />
 
       <div
-        className="pointer-events-none absolute top-1/2 z-40 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.3)] transition-[left] duration-75"
+        className="pointer-events-none absolute top-1/2 z-40 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.3)]"
         style={{
           left: `calc(${leftPercent}% - ${THUMB_SIZE_PX / 2}px + ${minThumbShiftPx}px)`,
         }}
       />
 
       <div
-        className="pointer-events-none absolute top-1/2 z-40 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.3)] transition-[left] duration-75"
+        className="pointer-events-none absolute top-1/2 z-40 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.3)]"
         style={{
           left: `calc(${rightPercent}% - ${THUMB_SIZE_PX / 2}px + ${maxThumbShiftPx}px)`,
         }}
@@ -364,7 +342,7 @@ function DualRangeSlider({
         value={minValue}
         onChange={(event) => onMinChange(Number(event.target.value))}
         className="range-thumb pointer-events-none absolute left-0 top-1/2 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
-        style={{ zIndex: 20 }}
+        style={{ zIndex: isExactlySameValue ? 40 : 20 }}
       />
 
       <input
