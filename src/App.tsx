@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import rawDatabase from './data/games_roulette_database_merged.json';
 
-type Difficulty = 'Легкая' | 'Нормальная' | 'Сложная';
+type Difficulty = 'Очень легко' | 'Легко' | 'Нормально' | 'Сложно' | 'Хардкор';
 
 type AudioContextCtor = {
   new (): AudioContext;
@@ -48,7 +48,7 @@ type GameEntry = {
 };
 
 const database = rawDatabase as RawDatabase;
-const DIFFICULTIES: Difficulty[] = ['Легкая', 'Нормальная', 'Сложная'];
+const DIFFICULTIES: Difficulty[] = ['Очень легко', 'Легко', 'Нормально', 'Сложно', 'Хардкор'];
 
 const LANE_ITEM_HEIGHT = 92;
 const STEP_GAP = 10;
@@ -363,7 +363,7 @@ export default function GameRouletteUI() {
   const [gamesDb] = useState<GameEntry[]>(() => getGamesDb());
   const [spinPool, setSpinPool] = useState<GameEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState<GameEntry | null>(null);
-  const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
+  const [difficulty, setDifficulty] = useState<Difficulty>('Нормально');
   const [isDifficultyOpen, setIsDifficultyOpen] = useState(false);
   const [isSpinning, setIsSpinning] = useState(false);
   const [hasSpun, setHasSpun] = useState(false);
@@ -644,6 +644,9 @@ export default function GameRouletteUI() {
     <div
       className="relative h-screen w-screen overflow-hidden bg-[#090a0d] text-white"
       style={{ fontFamily: 'Gilroy, ui-sans-serif, system-ui, sans-serif' }}
+      onClick={() => {
+        if (isDifficultyOpen) setIsDifficultyOpen(false);
+      }}
     >
       <div className="mx-auto flex h-full w-full max-w-[1728px] items-stretch gap-4 p-4">
         <aside className="flex w-[320px] shrink-0 flex-col rounded-[34px] bg-[#101115] px-6 py-6 xl:w-[360px]">
@@ -677,9 +680,71 @@ export default function GameRouletteUI() {
 
           <div className="mt-7 space-y-2.5 xl:space-y-3">
             <InfoRow label="Оценка" value={getRatingText(selectedGame)} />
-            <InfoRow label="Период" value={getPeriodText(selectedGame)} />
-            <InfoRow label="Игр в раунде" value={hasSpun ? String(spinPool.length) : String(roundSize)} />
-            <InfoRow label="Доступно" value={String(filteredGamesDb.length)} />
+            <InfoRow label="Время прохождения" value="14" />
+            <div className="relative">
+              <div className="flex items-center gap-2.5 xl:gap-3">
+                <Pill>Сложность</Pill>
+
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setIsDifficultyOpen((prev) => !prev);
+                  }}
+                  className="inline-flex h-[42px] min-w-0 items-center gap-2 rounded-full bg-white px-3 text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:h-[48px] xl:px-4 xl:text-[18px]"
+                >
+                  <span className="block truncate leading-[1.15]">{difficulty}</span>
+                  <svg
+                    className={`h-4 w-4 shrink-0 transition-transform duration-200 ${isDifficultyOpen ? 'rotate-180' : ''}`}
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              {isDifficultyOpen && (
+                <div
+                  className="absolute left-[132px] top-[calc(100%+10px)] z-50 w-[220px] rounded-[24px] bg-white p-2 shadow-2xl"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="space-y-1">
+                    {DIFFICULTIES.map((item) => (
+                      <button
+                        key={item}
+                        type="button"
+                        onClick={() => {
+                          setDifficulty(item);
+                          setIsDifficultyOpen(false);
+                        }}
+                        className={`flex w-full items-center justify-between rounded-[18px] px-4 py-3 text-left text-[16px] font-medium transition xl:text-[18px] ${
+                          difficulty === item
+                            ? 'bg-zinc-100 text-black'
+                            : 'bg-white text-black hover:bg-zinc-100'
+                        }`}
+                      >
+                        <span className="truncate">{item}</span>
+                        {difficulty === item && (
+                          <svg className="ml-2 h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                            <path
+                              fillRule="evenodd"
+                              d="M16.704 5.29a1 1 0 0 1 .006 1.414l-8 8a1 1 0 0 1-1.42-.008l-4-4a1 1 0 0 1 1.414-1.414l3.292 3.292 7.296-7.29a1 1 0 0 1 1.412.006Z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <InfoRow label="Очки" value="69" />
           </div>
 
           <div className="mt-auto pt-5">
