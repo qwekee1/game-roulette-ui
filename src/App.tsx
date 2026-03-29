@@ -290,7 +290,8 @@ function DualRangeSlider({
   const leftOffsetPx = minValue === min ? 0 : THUMB_SIZE_PX / 2;
   const rightOffsetPx = maxValue === max ? 0 : THUMB_SIZE_PX / 2;
 
-  const isOverlapping = Math.abs(minValue - maxValue) < step + 0.00001;
+  const sameValueThreshold = Math.max(Number.EPSILON * 10, step * 0.001);
+  const isOverlapping = Math.abs(minValue - maxValue) <= sameValueThreshold;
 
   let minThumbShiftPx = 0;
   let maxThumbShiftPx = 0;
