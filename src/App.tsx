@@ -68,15 +68,25 @@ const SPIN_POOL_SIZE = 10;
 
 const MIN_RATING = 0;
 const MAX_RATING = 5;
-const MIN_YEAR = 1980;
-const MAX_YEAR = 2025;
 
-const LS_SOUND_ENABLED = 'soundEnabled';
+const PERIOD_BUCKETS = [
+  { label: '1980–1989', start: 1980, end: 1989 },
+  { label: '1990–1994', start: 1990, end: 1994 },
+  { label: '1995–1999', start: 1995, end: 1999 },
+  { label: '2000–2004', start: 2000, end: 2004 },
+  { label: '2005–2009', start: 2005, end: 2009 },
+  { label: '2010–2014', start: 2010, end: 2014 },
+  { label: '2015–2019', start: 2015, end: 2019 },
+  { label: '2020–2025', start: 2020, end: 2025 },
+] as const;
+
 const LS_SOUND_VOLUME = 'soundVolume';
 const LS_RATING_MIN = 'rouletteRatingMin';
 const LS_RATING_MAX = 'rouletteRatingMax';
-const LS_YEAR_MIN = 'rouletteYearMin';
-const LS_YEAR_MAX = 'rouletteYearMax';
+const LS_PERIOD_MIN_INDEX = 'roulettePeriodMinIndex';
+const LS_PERIOD_MAX_INDEX = 'roulettePeriodMaxIndex';
+
+const THUMB_SIZE_PX = 20;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -229,16 +239,19 @@ function matchesFilters(
   game: GameEntry,
   ratingMin: number,
   ratingMax: number,
-  yearMin: number,
-  yearMax: number,
+  periodMinIndex: number,
+  periodMaxIndex: number,
 ): boolean {
   const rating = game.ratingValue ?? 0;
   if (rating < ratingMin || rating > ratingMax) return false;
 
-  const start = game.yearStart ?? MIN_YEAR;
-  const end = game.yearEnd ?? MAX_YEAR;
+  const selectedStart = PERIOD_BUCKETS[periodMinIndex].start;
+  const selectedEnd = PERIOD_BUCKETS[periodMaxIndex].end;
 
-  return end >= yearMin && start <= yearMax;
+  const start = game.yearStart ?? PERIOD_BUCKETS[0].start;
+  const end = game.yearEnd ?? PERIOD_BUCKETS[PERIOD_BUCKETS.length - 1].end;
+
+  return end >= selectedStart && start <= selectedEnd;
 }
 
 function readNumberFromStorage(key: string, fallback: number): number {
@@ -271,14 +284,18 @@ function DualRangeSlider({
   const leftPercent = ((minValue - min) / range) * 100;
   const rightPercent = ((maxValue - min) / range) * 100;
 
+  const leftOffsetPx = minValue === min ? 0 : THUMB_SIZE_PX / 2;
+  const rightOffsetPx = maxValue === max ? 0 : THUMB_SIZE_PX / 2;
+
   return (
     <div className="relative h-8">
       <div className="absolute top-1/2 h-3 w-full -translate-y-1/2 rounded-full bg-zinc-600" />
+
       <div
         className="absolute top-1/2 h-3 -translate-y-1/2 rounded-full bg-emerald-500"
         style={{
-          left: `${leftPercent}%`,
-          width: `${Math.max(0, rightPercent - leftPercent)}%`,
+          left: `calc(${leftPercent}% - ${leftOffsetPx}px)`,
+          width: `calc(${Math.max(0, rightPercent - leftPercent)}% + ${leftOffsetPx + rightOffsetPx}px)`,
         }}
       />
 
@@ -289,7 +306,7 @@ function DualRangeSlider({
         step={step}
         value={minValue}
         onChange={(event) => onMinChange(Number(event.target.value))}
-        className="range-thumb pointer-events-none absolute left-0 top-1/2 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
+        className="range-thumb pointer-events-none absolute left-0 top-1/2 z-20 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
       />
 
       <input
@@ -299,7 +316,7 @@ function DualRangeSlider({
         step={step}
         value={maxValue}
         onChange={(event) => onMaxChange(Number(event.target.value))}
-        className="range-thumb pointer-events-none absolute left-0 top-1/2 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
+        className="range-thumb pointer-events-none absolute left-0 top-1/2 z-30 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
       />
     </div>
   );
@@ -321,10 +338,6 @@ export default function GameRouletteUI() {
   const [isPresetOpen, setIsPresetOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  const [isSoundEnabled, setIsSoundEnabled] = useState<boolean>(() => {
-    const saved = window.localStorage.getItem(LS_SOUND_ENABLED);
-    return saved !== null ? JSON.parse(saved) : true;
-  });
   const [soundVolume, setSoundVolume] = useState<number>(() => {
     const saved = window.localStorage.getItem(LS_SOUND_VOLUME);
     return saved !== null ? Number(saved) : 70;
@@ -336,11 +349,11 @@ export default function GameRouletteUI() {
   const [ratingMax, setRatingMax] = useState<number>(() =>
     clamp(readNumberFromStorage(LS_RATING_MAX, MAX_RATING), MIN_RATING, MAX_RATING),
   );
-  const [yearMin, setYearMin] = useState<number>(() =>
-    clamp(readNumberFromStorage(LS_YEAR_MIN, MIN_YEAR), MIN_YEAR, MAX_YEAR),
+  const [periodMinIndex, setPeriodMinIndex] = useState<number>(() =>
+    clamp(readNumberFromStorage(LS_PERIOD_MIN_INDEX, 0), 0, PERIOD_BUCKETS.length - 1),
   );
-  const [yearMax, setYearMax] = useState<number>(() =>
-    clamp(readNumberFromStorage(LS_YEAR_MAX, MAX_YEAR), MIN_YEAR, MAX_YEAR),
+  const [periodMaxIndex, setPeriodMaxIndex] = useState<number>(() =>
+    clamp(readNumberFromStorage(LS_PERIOD_MAX_INDEX, PERIOD_BUCKETS.length - 1), 0, PERIOD_BUCKETS.length - 1),
   );
 
   const spinTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
@@ -350,17 +363,15 @@ export default function GameRouletteUI() {
   const tickTimeoutsRef = useRef<Array<ReturnType<typeof window.setTimeout>>>([]);
 
   const filteredGamesDb = useMemo(() => {
-    return gamesDb.filter((game) => matchesFilters(game, ratingMin, ratingMax, yearMin, yearMax));
-  }, [gamesDb, ratingMin, ratingMax, yearMin, yearMax]);
+    return gamesDb.filter((game) =>
+      matchesFilters(game, ratingMin, ratingMax, periodMinIndex, periodMaxIndex),
+    );
+  }, [gamesDb, ratingMin, ratingMax, periodMinIndex, periodMaxIndex]);
 
   const repeatedSpinPool = useMemo(() => {
     if (spinPool.length === 0) return [];
     return Array.from({ length: 120 }, (_, index) => spinPool[index % spinPool.length]);
   }, [spinPool]);
-
-  useEffect(() => {
-    window.localStorage.setItem(LS_SOUND_ENABLED, JSON.stringify(isSoundEnabled));
-  }, [isSoundEnabled]);
 
   useEffect(() => {
     window.localStorage.setItem(LS_SOUND_VOLUME, String(soundVolume));
@@ -369,9 +380,9 @@ export default function GameRouletteUI() {
   useEffect(() => {
     window.localStorage.setItem(LS_RATING_MIN, String(ratingMin));
     window.localStorage.setItem(LS_RATING_MAX, String(ratingMax));
-    window.localStorage.setItem(LS_YEAR_MIN, String(yearMin));
-    window.localStorage.setItem(LS_YEAR_MAX, String(yearMax));
-  }, [ratingMin, ratingMax, yearMin, yearMax]);
+    window.localStorage.setItem(LS_PERIOD_MIN_INDEX, String(periodMinIndex));
+    window.localStorage.setItem(LS_PERIOD_MAX_INDEX, String(periodMaxIndex));
+  }, [ratingMin, ratingMax, periodMinIndex, periodMaxIndex]);
 
   useEffect(() => {
     if (selectedGame && !filteredGamesDb.some((game) => game.id === selectedGame.id)) {
@@ -435,7 +446,8 @@ export default function GameRouletteUI() {
   };
 
   const playTone = (frequency: number, durationMs: number, volume: number, type: OscillatorType) => {
-    if (!isSoundEnabled || soundVolume === 0) return;
+    if (soundVolume === 0) return;
+
     const ctx = getAudioContext();
     if (!ctx) return;
 
@@ -819,55 +831,29 @@ export default function GameRouletteUI() {
                 Настройки звука
               </div>
 
-              <div className="space-y-5">
-                <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="mb-4 flex items-center justify-between gap-4">
                   <div>
-                    <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Звуки</div>
-                    <div className="mt-1 text-sm leading-[1.2] text-zinc-400">Тики рулетки и звук победы</div>
+                    <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Громкость</div>
+                    <div className="mt-1 text-sm leading-[1.2] text-zinc-400">0% = без звука</div>
                   </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={isSoundEnabled}
-                    onClick={() => setIsSoundEnabled((prev: boolean) => !prev)}
-                    className={[
-                      'relative inline-flex h-10 w-[74px] items-center rounded-full transition-all duration-200',
-                      isSoundEnabled ? 'bg-emerald-500' : 'bg-zinc-600',
-                    ].join(' ')}
-                  >
-                    <span
-                      className={[
-                        'inline-block h-8 w-8 transform rounded-full bg-white transition-transform duration-200',
-                        isSoundEnabled ? 'translate-x-9' : 'translate-x-1',
-                      ].join(' ')}
-                    />
-                  </button>
+                  <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
+                    {soundVolume}%
+                  </div>
                 </div>
 
-                <div>
-                  <div className="mb-4 flex items-center justify-between gap-4">
-                    <div>
-                      <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Громкость</div>
-                      <div className="mt-1 text-sm leading-[1.2] text-zinc-400">Общий уровень звука интерфейса</div>
-                    </div>
-                    <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
-                      {soundVolume}%
-                    </div>
-                  </div>
-
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={soundVolume}
-                    onChange={(event) => setSoundVolume(Number(event.target.value))}
-                    className="single-slider h-3 w-full cursor-pointer appearance-none rounded-full"
-                    style={{
-                      background: `linear-gradient(to right, #22c55e ${soundVolume}%, #52525b ${soundVolume}%)`,
-                    }}
-                  />
-                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={soundVolume}
+                  onChange={(event) => setSoundVolume(Number(event.target.value))}
+                  className="single-slider h-3 w-full cursor-pointer appearance-none rounded-full"
+                  style={{
+                    background: `linear-gradient(to right, #22c55e ${soundVolume}%, #52525b ${soundVolume}%)`,
+                  }}
+                />
               </div>
             </div>
 
@@ -904,24 +890,24 @@ export default function GameRouletteUI() {
                 <div>
                   <div className="mb-4 flex items-center justify-between gap-4">
                     <div>
-                      <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Годы</div>
+                      <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Период</div>
                       <div className="mt-1 text-sm leading-[1.2] text-zinc-400">
-                        От {yearMin} до {yearMax}
+                        От {PERIOD_BUCKETS[periodMinIndex].label} до {PERIOD_BUCKETS[periodMaxIndex].label}
                       </div>
                     </div>
                     <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
-                      {yearMin}–{yearMax}
+                      {PERIOD_BUCKETS[periodMinIndex].label} – {PERIOD_BUCKETS[periodMaxIndex].label}
                     </div>
                   </div>
 
                   <DualRangeSlider
-                    min={MIN_YEAR}
-                    max={MAX_YEAR}
+                    min={0}
+                    max={PERIOD_BUCKETS.length - 1}
                     step={1}
-                    minValue={yearMin}
-                    maxValue={yearMax}
-                    onMinChange={(value) => setYearMin(Math.min(value, yearMax))}
-                    onMaxChange={(value) => setYearMax(Math.max(value, yearMin))}
+                    minValue={periodMinIndex}
+                    maxValue={periodMaxIndex}
+                    onMinChange={(value) => setPeriodMinIndex(Math.min(value, periodMaxIndex))}
+                    onMaxChange={(value) => setPeriodMaxIndex(Math.max(value, periodMinIndex))}
                   />
                 </div>
 
