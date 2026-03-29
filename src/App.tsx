@@ -40,12 +40,6 @@ type GameEntry = {
     startYear?: number;
     endYear?: number;
   };
-  source?: {
-    bucketCodes?: number[];
-    normalizedTiers?: number[];
-    maxNormalizedTier?: number;
-    files?: string[];
-  };
   assets?: {
     stopgameCoverUrl?: string | null;
     stopgameCoverFetched?: boolean;
@@ -64,10 +58,11 @@ const WINNER_ROW_INDEX = 4;
 const SPIN_OVERSHOOT = 22;
 const VISIBLE_TRACK_HEIGHT =
   VISIBLE_ROWS * LANE_ITEM_HEIGHT + (VISIBLE_ROWS - 1) * STEP_GAP;
-const SPIN_POOL_SIZE = 10;
 
 const MIN_RATING = 0;
 const MAX_RATING = 5;
+const MIN_ROUND_SIZE = 3;
+const MAX_ROUND_SIZE = 16;
 
 const PERIOD_BUCKETS = [
   { label: '1980–1989', start: 1980, end: 1989 },
@@ -85,8 +80,7 @@ const LS_RATING_MIN = 'rouletteRatingMin';
 const LS_RATING_MAX = 'rouletteRatingMax';
 const LS_PERIOD_MIN_INDEX = 'roulettePeriodMinIndex';
 const LS_PERIOD_MAX_INDEX = 'roulettePeriodMaxIndex';
-
-const THUMB_SIZE_PX = 20;
+const LS_ROUND_SIZE = 'rouletteRoundSize';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -261,65 +255,8 @@ function readNumberFromStorage(key: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-type RangeSliderProps = {
-  min: number;
-  max: number;
-  step: number;
-  minValue: number;
-  maxValue: number;
-  onMinChange: (value: number) => void;
-  onMaxChange: (value: number) => void;
-};
-
-function DualRangeSlider({
-  min,
-  max,
-  step,
-  minValue,
-  maxValue,
-  onMinChange,
-  onMaxChange,
-}: RangeSliderProps) {
-  const range = max - min;
-  const leftPercent = ((minValue - min) / range) * 100;
-  const rightPercent = ((maxValue - min) / range) * 100;
-
-  const leftOffsetPx = minValue === min ? 0 : THUMB_SIZE_PX / 2;
-  const rightOffsetPx = maxValue === max ? 0 : THUMB_SIZE_PX / 2;
-
-  return (
-    <div className="relative h-8">
-      <div className="absolute top-1/2 h-3 w-full -translate-y-1/2 rounded-full bg-zinc-600" />
-
-      <div
-        className="absolute top-1/2 h-3 -translate-y-1/2 rounded-full bg-emerald-500"
-        style={{
-          left: `calc(${leftPercent}% - ${leftOffsetPx}px)`,
-          width: `calc(${Math.max(0, rightPercent - leftPercent)}% + ${leftOffsetPx + rightOffsetPx}px)`,
-        }}
-      />
-
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={minValue}
-        onChange={(event) => onMinChange(Number(event.target.value))}
-        className="range-thumb pointer-events-none absolute left-0 top-1/2 z-20 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
-      />
-
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={maxValue}
-        onChange={(event) => onMaxChange(Number(event.target.value))}
-        className="range-thumb pointer-events-none absolute left-0 top-1/2 z-30 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
-      />
-    </div>
-  );
+function getPeriodDisplay(periodMinIndex: number, periodMaxIndex: number): string {
+  return `${PERIOD_BUCKETS[periodMinIndex].start}–${PERIOD_BUCKETS[periodMaxIndex].end}`;
 }
 
 export default function GameRouletteUI() {
@@ -334,8 +271,6 @@ export default function GameRouletteUI() {
   const [spinTranslate, setSpinTranslate] = useState(0);
   const [spinTransition, setSpinTransition] = useState('none');
   const [spinSequence, setSpinSequence] = useState<GameEntry[] | null>(null);
-  const [presetCount, setPresetCount] = useState<number>(0);
-  const [isPresetOpen, setIsPresetOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const [soundVolume, setSoundVolume] = useState<number>(() => {
@@ -354,6 +289,9 @@ export default function GameRouletteUI() {
   );
   const [periodMaxIndex, setPeriodMaxIndex] = useState<number>(() =>
     clamp(readNumberFromStorage(LS_PERIOD_MAX_INDEX, PERIOD_BUCKETS.length - 1), 0, PERIOD_BUCKETS.length - 1),
+  );
+  const [roundSize, setRoundSize] = useState<number>(() =>
+    clamp(readNumberFromStorage(LS_ROUND_SIZE, 10), MIN_ROUND_SIZE, MAX_ROUND_SIZE),
   );
 
   const spinTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
@@ -382,7 +320,8 @@ export default function GameRouletteUI() {
     window.localStorage.setItem(LS_RATING_MAX, String(ratingMax));
     window.localStorage.setItem(LS_PERIOD_MIN_INDEX, String(periodMinIndex));
     window.localStorage.setItem(LS_PERIOD_MAX_INDEX, String(periodMaxIndex));
-  }, [ratingMin, ratingMax, periodMinIndex, periodMaxIndex]);
+    window.localStorage.setItem(LS_ROUND_SIZE, String(roundSize));
+  }, [ratingMin, ratingMax, periodMinIndex, periodMaxIndex, roundSize]);
 
   useEffect(() => {
     if (selectedGame && !filteredGamesDb.some((game) => game.id === selectedGame.id)) {
@@ -525,7 +464,7 @@ export default function GameRouletteUI() {
     if (finalizeTimeoutRef.current !== null) window.clearTimeout(finalizeTimeoutRef.current);
     clearTickTimeouts();
 
-    const newRoundGames = getRandomGames(filteredGamesDb, SPIN_POOL_SIZE);
+    const newRoundGames = getRandomGames(filteredGamesDb, roundSize);
     if (newRoundGames.length === 0) return;
 
     const repeatedPool = Array.from(
@@ -584,7 +523,7 @@ export default function GameRouletteUI() {
   };
 
   const rightColumnItems = hasSpun ? spinPool : [];
-  const rightPlaceholders = !hasSpun ? getPlaceholderRows(SPIN_POOL_SIZE) : [];
+  const rightPlaceholders = !hasSpun ? getPlaceholderRows(roundSize) : [];
 
   return (
     <div
@@ -624,7 +563,7 @@ export default function GameRouletteUI() {
           <div className="mt-7 space-y-2.5 xl:space-y-3">
             <InfoRow label="Оценка" value={getRatingText(selectedGame)} />
             <InfoRow label="Период" value={getPeriodText(selectedGame)} />
-            <InfoRow label="Игр в раунде" value={hasSpun ? String(spinPool.length) : '—'} />
+            <InfoRow label="Игр в раунде" value={hasSpun ? String(spinPool.length) : String(roundSize)} />
             <InfoRow label="Доступно" value={String(filteredGamesDb.length)} />
           </div>
 
@@ -717,48 +656,6 @@ export default function GameRouletteUI() {
         </main>
 
         <aside className="flex w-[320px] shrink-0 flex-col rounded-[34px] bg-[#101115] px-6 py-6 xl:w-[360px]">
-          <div className="mb-5 flex items-center gap-2.5 xl:mb-6 xl:gap-3">
-            <button
-              type="button"
-              className="min-w-0 flex-1 inline-flex h-[46px] items-center justify-center truncate whitespace-nowrap rounded-full bg-white px-3 text-[16px] font-medium text-black xl:h-[52px] xl:px-4 xl:text-[18px]"
-            >
-              <span className="block truncate leading-[1.15]">Выбрать пресет игры</span>
-            </button>
-
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setIsPresetOpen((prev: boolean) => !prev)}
-                className="flex h-[46px] w-[46px] items-center justify-center rounded-full bg-white text-[20px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:h-[52px] xl:w-[52px] xl:text-[24px]"
-              >
-                <span className="leading-[1.1]">{presetCount}</span>
-              </button>
-
-              <div
-                className={[
-                  'absolute right-0 top-[calc(100%+10px)] z-20 origin-top-right rounded-[20px] bg-white p-2 shadow-2xl transition-all duration-200 ease-out',
-                  isPresetOpen
-                    ? 'pointer-events-auto translate-y-0 scale-100 opacity-100'
-                    : 'pointer-events-none -translate-y-2 scale-95 opacity-0',
-                ].join(' ')}
-              >
-                {[0, 1, 2, 3, 4, 5].map((num) => (
-                  <button
-                    key={num}
-                    type="button"
-                    onClick={() => {
-                      setPresetCount(num);
-                      setIsPresetOpen(false);
-                    }}
-                    className="block w-full rounded-full px-4 py-2 text-left text-[15px] font-medium leading-[1.15] text-black transition-colors duration-200 hover:bg-zinc-100"
-                  >
-                    {num}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
           <div className="min-h-0 flex-1 overflow-y-auto pr-1">
             <div className="space-y-2.5 xl:space-y-3">
               {!hasSpun &&
@@ -876,15 +773,39 @@ export default function GameRouletteUI() {
                     </div>
                   </div>
 
-                  <DualRangeSlider
-                    min={MIN_RATING}
-                    max={MAX_RATING}
-                    step={0.1}
-                    minValue={ratingMin}
-                    maxValue={ratingMax}
-                    onMinChange={(value) => setRatingMin(Math.min(value, ratingMax))}
-                    onMaxChange={(value) => setRatingMax(Math.max(value, ratingMin))}
-                  />
+                  <div className="space-y-3">
+                    <div>
+                      <div className="mb-2 text-sm text-zinc-400">От</div>
+                      <input
+                        type="range"
+                        min={MIN_RATING}
+                        max={MAX_RATING}
+                        step={0.1}
+                        value={ratingMin}
+                        onChange={(event) => setRatingMin(Math.min(Number(event.target.value), ratingMax))}
+                        className="single-slider h-3 w-full cursor-pointer appearance-none rounded-full"
+                        style={{
+                          background: `linear-gradient(to right, #22c55e ${((ratingMin - MIN_RATING) / (MAX_RATING - MIN_RATING)) * 100}%, #52525b ${((ratingMin - MIN_RATING) / (MAX_RATING - MIN_RATING)) * 100}%)`,
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <div className="mb-2 text-sm text-zinc-400">До</div>
+                      <input
+                        type="range"
+                        min={MIN_RATING}
+                        max={MAX_RATING}
+                        step={0.1}
+                        value={ratingMax}
+                        onChange={(event) => setRatingMax(Math.max(Number(event.target.value), ratingMin))}
+                        className="single-slider h-3 w-full cursor-pointer appearance-none rounded-full"
+                        style={{
+                          background: `linear-gradient(to right, #22c55e ${((ratingMax - MIN_RATING) / (MAX_RATING - MIN_RATING)) * 100}%, #52525b ${((ratingMax - MIN_RATING) / (MAX_RATING - MIN_RATING)) * 100}%)`,
+                        }}
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div>
@@ -892,22 +813,77 @@ export default function GameRouletteUI() {
                     <div>
                       <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Период</div>
                       <div className="mt-1 text-sm leading-[1.2] text-zinc-400">
-                        От {PERIOD_BUCKETS[periodMinIndex].label} до {PERIOD_BUCKETS[periodMaxIndex].label}
+                        {getPeriodDisplay(periodMinIndex, periodMaxIndex)}
                       </div>
                     </div>
                     <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
-                      {PERIOD_BUCKETS[periodMinIndex].label} – {PERIOD_BUCKETS[periodMaxIndex].label}
+                      {getPeriodDisplay(periodMinIndex, periodMaxIndex)}
                     </div>
                   </div>
 
-                  <DualRangeSlider
-                    min={0}
-                    max={PERIOD_BUCKETS.length - 1}
+                  <div className="space-y-3">
+                    <div>
+                      <div className="mb-2 text-sm text-zinc-400">От</div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={PERIOD_BUCKETS.length - 1}
+                        step={1}
+                        value={periodMinIndex}
+                        onChange={(event) =>
+                          setPeriodMinIndex(Math.min(Number(event.target.value), periodMaxIndex))
+                        }
+                        className="single-slider h-3 w-full cursor-pointer appearance-none rounded-full"
+                        style={{
+                          background: `linear-gradient(to right, #22c55e ${(periodMinIndex / (PERIOD_BUCKETS.length - 1)) * 100}%, #52525b ${(periodMinIndex / (PERIOD_BUCKETS.length - 1)) * 100}%)`,
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <div className="mb-2 text-sm text-zinc-400">До</div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={PERIOD_BUCKETS.length - 1}
+                        step={1}
+                        value={periodMaxIndex}
+                        onChange={(event) =>
+                          setPeriodMaxIndex(Math.max(Number(event.target.value), periodMinIndex))
+                        }
+                        className="single-slider h-3 w-full cursor-pointer appearance-none rounded-full"
+                        style={{
+                          background: `linear-gradient(to right, #22c55e ${(periodMaxIndex / (PERIOD_BUCKETS.length - 1)) * 100}%, #52525b ${(periodMaxIndex / (PERIOD_BUCKETS.length - 1)) * 100}%)`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-4 flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Игр в раунде</div>
+                      <div className="mt-1 text-sm leading-[1.2] text-zinc-400">
+                        От {MIN_ROUND_SIZE} до {MAX_ROUND_SIZE}
+                      </div>
+                    </div>
+                    <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
+                      {roundSize}
+                    </div>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={MIN_ROUND_SIZE}
+                    max={MAX_ROUND_SIZE}
                     step={1}
-                    minValue={periodMinIndex}
-                    maxValue={periodMaxIndex}
-                    onMinChange={(value) => setPeriodMinIndex(Math.min(value, periodMaxIndex))}
-                    onMaxChange={(value) => setPeriodMaxIndex(Math.max(value, periodMinIndex))}
+                    value={roundSize}
+                    onChange={(event) => setRoundSize(Number(event.target.value))}
+                    className="single-slider h-3 w-full cursor-pointer appearance-none rounded-full"
+                    style={{
+                      background: `linear-gradient(to right, #22c55e ${((roundSize - MIN_ROUND_SIZE) / (MAX_ROUND_SIZE - MIN_ROUND_SIZE)) * 100}%, #52525b ${((roundSize - MIN_ROUND_SIZE) / (MAX_ROUND_SIZE - MIN_ROUND_SIZE)) * 100}%)`,
+                    }}
                   />
                 </div>
 
@@ -936,29 +912,6 @@ export default function GameRouletteUI() {
             }
 
             .single-slider::-moz-range-thumb {
-              width: 20px;
-              height: 20px;
-              border-radius: 999px;
-              background: #ffffff;
-              cursor: pointer;
-              border: none;
-            }
-
-            .range-thumb::-webkit-slider-thumb {
-              appearance: none;
-              pointer-events: auto;
-              width: 20px;
-              height: 20px;
-              border-radius: 999px;
-              background: #ffffff;
-              cursor: pointer;
-              box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-              border: none;
-              position: relative;
-            }
-
-            .range-thumb::-moz-range-thumb {
-              pointer-events: auto;
               width: 20px;
               height: 20px;
               border-radius: 999px;
