@@ -248,6 +248,63 @@ function readNumberFromStorage(key: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+type RangeSliderProps = {
+  min: number;
+  max: number;
+  step: number;
+  minValue: number;
+  maxValue: number;
+  onMinChange: (value: number) => void;
+  onMaxChange: (value: number) => void;
+};
+
+function DualRangeSlider({
+  min,
+  max,
+  step,
+  minValue,
+  maxValue,
+  onMinChange,
+  onMaxChange,
+}: RangeSliderProps) {
+  const range = max - min;
+  const leftPercent = ((minValue - min) / range) * 100;
+  const rightPercent = ((maxValue - min) / range) * 100;
+
+  return (
+    <div className="relative h-8">
+      <div className="absolute top-1/2 h-3 w-full -translate-y-1/2 rounded-full bg-zinc-600" />
+      <div
+        className="absolute top-1/2 h-3 -translate-y-1/2 rounded-full bg-emerald-500"
+        style={{
+          left: `${leftPercent}%`,
+          width: `${Math.max(0, rightPercent - leftPercent)}%`,
+        }}
+      />
+
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={minValue}
+        onChange={(event) => onMinChange(Number(event.target.value))}
+        className="range-thumb pointer-events-none absolute left-0 top-1/2 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
+      />
+
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={maxValue}
+        onChange={(event) => onMaxChange(Number(event.target.value))}
+        className="range-thumb pointer-events-none absolute left-0 top-1/2 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
+      />
+    </div>
+  );
+}
+
 export default function GameRouletteUI() {
   const [gamesDb] = useState<GameEntry[]>(() => getGamesDb());
   const [spinPool, setSpinPool] = useState<GameEntry[]>([]);
@@ -293,14 +350,7 @@ export default function GameRouletteUI() {
   const tickTimeoutsRef = useRef<Array<ReturnType<typeof window.setTimeout>>>([]);
 
   const filteredGamesDb = useMemo(() => {
-    const safeRatingMin = Math.min(ratingMin, ratingMax);
-    const safeRatingMax = Math.max(ratingMin, ratingMax);
-    const safeYearMin = Math.min(yearMin, yearMax);
-    const safeYearMax = Math.max(yearMin, yearMax);
-
-    return gamesDb.filter((game) =>
-      matchesFilters(game, safeRatingMin, safeRatingMax, safeYearMin, safeYearMax),
-    );
+    return gamesDb.filter((game) => matchesFilters(game, ratingMin, ratingMax, yearMin, yearMax));
   }, [gamesDb, ratingMin, ratingMax, yearMin, yearMax]);
 
   const repeatedSpinPool = useMemo(() => {
@@ -524,22 +574,6 @@ export default function GameRouletteUI() {
   const rightColumnItems = hasSpun ? spinPool : [];
   const rightPlaceholders = !hasSpun ? getPlaceholderRows(SPIN_POOL_SIZE) : [];
 
-  const ratingTrackStyle = (min: number, max: number) => {
-    const left = ((min - MIN_RATING) / (MAX_RATING - MIN_RATING)) * 100;
-    const right = ((max - MIN_RATING) / (MAX_RATING - MIN_RATING)) * 100;
-    return {
-      background: `linear-gradient(to right, #52525b 0%, #52525b ${left}%, #22c55e ${left}%, #22c55e ${right}%, #52525b ${right}%, #52525b 100%)`,
-    };
-  };
-
-  const yearTrackStyle = (min: number, max: number) => {
-    const left = ((min - MIN_YEAR) / (MAX_YEAR - MIN_YEAR)) * 100;
-    const right = ((max - MIN_YEAR) / (MAX_YEAR - MIN_YEAR)) * 100;
-    return {
-      background: `linear-gradient(to right, #52525b 0%, #52525b ${left}%, #22c55e ${left}%, #22c55e ${right}%, #52525b ${right}%, #52525b 100%)`,
-    };
-  };
-
   return (
     <div
       className="relative h-screen w-screen overflow-hidden bg-[#090a0d] text-white"
@@ -759,7 +793,7 @@ export default function GameRouletteUI() {
       >
         <div
           className={[
-            'w-full max-w-[520px] rounded-[32px] bg-[#17191e] p-6 shadow-2xl transition-all duration-300 ease-out xl:p-7',
+            'w-full max-w-[560px] rounded-[32px] bg-[#17191e] p-6 shadow-2xl transition-all duration-300 ease-out xl:p-7',
             isSettingsOpen ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-4 scale-95 opacity-0',
           ].join(' ')}
         >
@@ -767,7 +801,7 @@ export default function GameRouletteUI() {
             <div>
               <h2 className="text-[26px] font-semibold leading-[1.12] text-white xl:text-[30px]">Настройки</h2>
               <p className="mt-1 text-sm leading-[1.2] text-zinc-400">
-                Выбери диапазон рейтинга и годов выхода игр.
+                Звук и фильтры рулетки.
               </p>
             </div>
             <button
@@ -781,143 +815,125 @@ export default function GameRouletteUI() {
 
           <div className="space-y-5">
             <div className="rounded-[26px] bg-[#101115] p-4 xl:p-5">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Звуки</div>
-                  <div className="mt-1 text-sm leading-[1.2] text-zinc-400">Тики рулетки и звук победы</div>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={isSoundEnabled}
-                  onClick={() => setIsSoundEnabled((prev: boolean) => !prev)}
-                  className={[
-                    'relative inline-flex h-10 w-[74px] items-center rounded-full transition-all duration-200',
-                    isSoundEnabled ? 'bg-emerald-500' : 'bg-zinc-600',
-                  ].join(' ')}
-                >
-                  <span
+              <div className="mb-4 text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">
+                Настройки звука
+              </div>
+
+              <div className="space-y-5">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Звуки</div>
+                    <div className="mt-1 text-sm leading-[1.2] text-zinc-400">Тики рулетки и звук победы</div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={isSoundEnabled}
+                    onClick={() => setIsSoundEnabled((prev: boolean) => !prev)}
                     className={[
-                      'inline-block h-8 w-8 transform rounded-full bg-white transition-transform duration-200',
-                      isSoundEnabled ? 'translate-x-9' : 'translate-x-1',
+                      'relative inline-flex h-10 w-[74px] items-center rounded-full transition-all duration-200',
+                      isSoundEnabled ? 'bg-emerald-500' : 'bg-zinc-600',
                     ].join(' ')}
+                  >
+                    <span
+                      className={[
+                        'inline-block h-8 w-8 transform rounded-full bg-white transition-transform duration-200',
+                        isSoundEnabled ? 'translate-x-9' : 'translate-x-1',
+                      ].join(' ')}
+                    />
+                  </button>
+                </div>
+
+                <div>
+                  <div className="mb-4 flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Громкость</div>
+                      <div className="mt-1 text-sm leading-[1.2] text-zinc-400">Общий уровень звука интерфейса</div>
+                    </div>
+                    <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
+                      {soundVolume}%
+                    </div>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={soundVolume}
+                    onChange={(event) => setSoundVolume(Number(event.target.value))}
+                    className="single-slider h-3 w-full cursor-pointer appearance-none rounded-full"
+                    style={{
+                      background: `linear-gradient(to right, #22c55e ${soundVolume}%, #52525b ${soundVolume}%)`,
+                    }}
                   />
-                </button>
+                </div>
               </div>
             </div>
 
             <div className="rounded-[26px] bg-[#101115] p-4 xl:p-5">
-              <div className="mb-4 flex items-center justify-between gap-4">
+              <div className="mb-4 text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">
+                Настройки рулетки
+              </div>
+
+              <div className="space-y-6">
                 <div>
-                  <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Громкость</div>
-                  <div className="mt-1 text-sm leading-[1.2] text-zinc-400">Общий уровень звука интерфейса</div>
-                </div>
-                <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
-                  {soundVolume}%
-                </div>
-              </div>
+                  <div className="mb-4 flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Рейтинг</div>
+                      <div className="mt-1 text-sm leading-[1.2] text-zinc-400">
+                        От {ratingMin.toFixed(1)} до {ratingMax.toFixed(1)}
+                      </div>
+                    </div>
+                    <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
+                      {ratingMin.toFixed(1)}–{ratingMax.toFixed(1)}
+                    </div>
+                  </div>
 
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={1}
-                value={soundVolume}
-                onChange={(event) => setSoundVolume(Number(event.target.value))}
-                className="slider h-3 w-full cursor-pointer appearance-none rounded-full"
-                style={{
-                  background: `linear-gradient(to right, #22c55e ${soundVolume}%, #52525b ${soundVolume}%)`,
-                }}
-              />
-            </div>
+                  <DualRangeSlider
+                    min={MIN_RATING}
+                    max={MAX_RATING}
+                    step={0.1}
+                    minValue={ratingMin}
+                    maxValue={ratingMax}
+                    onMinChange={(value) => setRatingMin(Math.min(value, ratingMax))}
+                    onMaxChange={(value) => setRatingMax(Math.max(value, ratingMin))}
+                  />
+                </div>
 
-            <div className="rounded-[26px] bg-[#101115] p-4 xl:p-5">
-              <div className="mb-4 flex items-center justify-between gap-4">
                 <div>
-                  <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Рейтинг</div>
-                  <div className="mt-1 text-sm leading-[1.2] text-zinc-400">От {ratingMin.toFixed(1)} до {ratingMax.toFixed(1)}</div>
-                </div>
-                <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
-                  {ratingMin.toFixed(1)}–{ratingMax.toFixed(1)}
-                </div>
-              </div>
+                  <div className="mb-4 flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Годы</div>
+                      <div className="mt-1 text-sm leading-[1.2] text-zinc-400">
+                        От {yearMin} до {yearMax}
+                      </div>
+                    </div>
+                    <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
+                      {yearMin}–{yearMax}
+                    </div>
+                  </div>
 
-              <div className="relative pt-2">
-                <input
-                  type="range"
-                  min={MIN_RATING}
-                  max={MAX_RATING}
-                  step={0.1}
-                  value={ratingMin}
-                  onChange={(event) => {
-                    const next = Number(event.target.value);
-                    setRatingMin(Math.min(next, ratingMax));
-                  }}
-                  className="slider absolute left-0 top-2 h-3 w-full cursor-pointer appearance-none rounded-full bg-transparent"
-                  style={ratingTrackStyle(ratingMin, ratingMax)}
-                />
-                <input
-                  type="range"
-                  min={MIN_RATING}
-                  max={MAX_RATING}
-                  step={0.1}
-                  value={ratingMax}
-                  onChange={(event) => {
-                    const next = Number(event.target.value);
-                    setRatingMax(Math.max(next, ratingMin));
-                  }}
-                  className="slider absolute left-0 top-2 h-3 w-full cursor-pointer appearance-none rounded-full bg-transparent"
-                  style={ratingTrackStyle(ratingMin, ratingMax)}
-                />
-                <div className="h-7" />
-              </div>
-            </div>
-
-            <div className="rounded-[26px] bg-[#101115] p-4 xl:p-5">
-              <div className="mb-4 flex items-center justify-between gap-4">
-                <div>
-                  <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Годы</div>
-                  <div className="mt-1 text-sm leading-[1.2] text-zinc-400">От {yearMin} до {yearMax}</div>
+                  <DualRangeSlider
+                    min={MIN_YEAR}
+                    max={MAX_YEAR}
+                    step={1}
+                    minValue={yearMin}
+                    maxValue={yearMax}
+                    onMinChange={(value) => setYearMin(Math.min(value, yearMax))}
+                    onMaxChange={(value) => setYearMax(Math.max(value, yearMin))}
+                  />
                 </div>
-                <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
-                  {yearMin}–{yearMax}
-                </div>
-              </div>
 
-              <div className="relative pt-2">
-                <input
-                  type="range"
-                  min={MIN_YEAR}
-                  max={MAX_YEAR}
-                  step={1}
-                  value={yearMin}
-                  onChange={(event) => {
-                    const next = Number(event.target.value);
-                    setYearMin(Math.min(next, yearMax));
-                  }}
-                  className="slider absolute left-0 top-2 h-3 w-full cursor-pointer appearance-none rounded-full bg-transparent"
-                  style={yearTrackStyle(yearMin, yearMax)}
-                />
-                <input
-                  type="range"
-                  min={MIN_YEAR}
-                  max={MAX_YEAR}
-                  step={1}
-                  value={yearMax}
-                  onChange={(event) => {
-                    const next = Number(event.target.value);
-                    setYearMax(Math.max(next, yearMin));
-                  }}
-                  className="slider absolute left-0 top-2 h-3 w-full cursor-pointer appearance-none rounded-full bg-transparent"
-                  style={yearTrackStyle(yearMin, yearMax)}
-                />
-                <div className="h-7" />
+                <div className="rounded-full bg-white px-4 py-3 text-[16px] font-medium text-black xl:text-[18px]">
+                  Игр в списке: {filteredGamesDb.length}
+                </div>
               </div>
             </div>
           </div>
 
           <style>{`
-            .slider::-webkit-slider-thumb {
+            .single-slider::-webkit-slider-thumb {
               appearance: none;
               width: 20px;
               height: 20px;
@@ -927,20 +943,43 @@ export default function GameRouletteUI() {
               box-shadow: 0 2px 6px rgba(0,0,0,0.3);
               border: none;
               transition: transform 0.15s ease;
-              pointer-events: auto;
-              position: relative;
             }
-            .slider::-webkit-slider-thumb:hover {
+
+            .single-slider::-webkit-slider-thumb:hover {
               transform: scale(1.1);
             }
-            .slider::-moz-range-thumb {
+
+            .single-slider::-moz-range-thumb {
               width: 20px;
               height: 20px;
               border-radius: 999px;
               background: #ffffff;
               cursor: pointer;
               border: none;
+            }
+
+            .range-thumb::-webkit-slider-thumb {
+              appearance: none;
               pointer-events: auto;
+              width: 20px;
+              height: 20px;
+              border-radius: 999px;
+              background: #ffffff;
+              cursor: pointer;
+              box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+              border: none;
+              position: relative;
+            }
+
+            .range-thumb::-moz-range-thumb {
+              pointer-events: auto;
+              width: 20px;
+              height: 20px;
+              border-radius: 999px;
+              background: #ffffff;
+              cursor: pointer;
+              border: none;
+              box-shadow: 0 2px 6px rgba(0,0,0,0.3);
             }
           `}</style>
         </div>
