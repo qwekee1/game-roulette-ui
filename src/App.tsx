@@ -84,6 +84,7 @@ const LS_PERIOD_MAX_INDEX = 'roulettePeriodMaxIndex';
 const LS_ROUND_SIZE = 'rouletteRoundSize';
 
 const THUMB_SIZE_PX = 20;
+const OVERLAP_THUMB_OFFSET_PX = 8;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -282,13 +283,30 @@ function DualRangeSlider({
   onMaxChange,
 }: RangeSliderProps) {
   const range = max - min;
-  const leftPercent = ((minValue - min) / range) * 100;
-  const rightPercent = ((maxValue - min) / range) * 100;
+  const safeRange = range === 0 ? 1 : range;
+  const leftPercent = ((minValue - min) / safeRange) * 100;
+  const rightPercent = ((maxValue - min) / safeRange) * 100;
 
   const leftOffsetPx = minValue === min ? 0 : THUMB_SIZE_PX / 2;
   const rightOffsetPx = maxValue === max ? 0 : THUMB_SIZE_PX / 2;
 
   const isOverlapping = Math.abs(minValue - maxValue) < step + 0.00001;
+
+  let minThumbShift = '0px';
+  let maxThumbShift = '0px';
+
+  if (isOverlapping) {
+    if (minValue === min && maxValue === min) {
+      minThumbShift = '0px';
+      maxThumbShift = `${OVERLAP_THUMB_OFFSET_PX}px`;
+    } else if (minValue === max && maxValue === max) {
+      minThumbShift = `-${OVERLAP_THUMB_OFFSET_PX}px`;
+      maxThumbShift = '0px';
+    } else {
+      minThumbShift = `-${OVERLAP_THUMB_OFFSET_PX}px`;
+      maxThumbShift = `${OVERLAP_THUMB_OFFSET_PX}px`;
+    }
+  }
 
   return (
     <div className="relative h-8">
@@ -310,7 +328,10 @@ function DualRangeSlider({
         value={minValue}
         onChange={(event) => onMinChange(Number(event.target.value))}
         className="range-thumb pointer-events-none absolute left-0 top-1/2 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
-        style={{ zIndex: isOverlapping ? 40 : 20 }}
+        style={{
+          zIndex: isOverlapping ? 40 : 20,
+          ['--thumb-shift' as string]: minThumbShift,
+        }}
       />
 
       <input
@@ -321,7 +342,10 @@ function DualRangeSlider({
         value={maxValue}
         onChange={(event) => onMaxChange(Number(event.target.value))}
         className="range-thumb pointer-events-none absolute left-0 top-1/2 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
-        style={{ zIndex: 30 }}
+        style={{
+          zIndex: 30,
+          ['--thumb-shift' as string]: maxThumbShift,
+        }}
       />
     </div>
   );
@@ -963,6 +987,12 @@ export default function GameRouletteUI() {
               box-shadow: 0 2px 6px rgba(0,0,0,0.3);
               border: none;
               position: relative;
+              transform: translateX(var(--thumb-shift, 0px));
+              transition: transform 0.15s ease;
+            }
+
+            .range-thumb::-webkit-slider-thumb:hover {
+              transform: translateX(var(--thumb-shift, 0px)) scale(1.08);
             }
 
             .range-thumb::-moz-range-thumb {
@@ -974,6 +1004,7 @@ export default function GameRouletteUI() {
               cursor: pointer;
               border: none;
               box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+              transform: translateX(var(--thumb-shift, 0px));
             }
           `}</style>
         </div>
