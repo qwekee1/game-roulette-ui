@@ -61,6 +61,7 @@ const VISIBLE_TRACK_HEIGHT =
 
 const MIN_RATING = 0;
 const MAX_RATING = 5;
+const DEFAULT_ROUND_SIZE = 14;
 const MIN_ROUND_SIZE = 3;
 const MAX_ROUND_SIZE = 14;
 
@@ -287,6 +288,8 @@ function DualRangeSlider({
   const leftOffsetPx = minValue === min ? 0 : THUMB_SIZE_PX / 2;
   const rightOffsetPx = maxValue === max ? 0 : THUMB_SIZE_PX / 2;
 
+  const isOverlapping = Math.abs(minValue - maxValue) < step + 0.00001;
+
   return (
     <div className="relative h-8">
       <div className="absolute top-1/2 h-3 w-full -translate-y-1/2 rounded-full bg-zinc-600" />
@@ -306,7 +309,8 @@ function DualRangeSlider({
         step={step}
         value={minValue}
         onChange={(event) => onMinChange(Number(event.target.value))}
-        className="range-thumb pointer-events-none absolute left-0 top-1/2 z-20 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
+        className="range-thumb pointer-events-none absolute left-0 top-1/2 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
+        style={{ zIndex: isOverlapping ? 40 : 20 }}
       />
 
       <input
@@ -316,7 +320,8 @@ function DualRangeSlider({
         step={step}
         value={maxValue}
         onChange={(event) => onMaxChange(Number(event.target.value))}
-        className="range-thumb pointer-events-none absolute left-0 top-1/2 z-30 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
+        className="range-thumb pointer-events-none absolute left-0 top-1/2 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
+        style={{ zIndex: 30 }}
       />
     </div>
   );
@@ -354,7 +359,7 @@ export default function GameRouletteUI() {
     clamp(readNumberFromStorage(LS_PERIOD_MAX_INDEX, PERIOD_BUCKETS.length - 1), 0, PERIOD_BUCKETS.length - 1),
   );
   const [roundSize, setRoundSize] = useState<number>(() =>
-    clamp(readNumberFromStorage(LS_ROUND_SIZE, 10), MIN_ROUND_SIZE, MAX_ROUND_SIZE),
+    clamp(readNumberFromStorage(LS_ROUND_SIZE, DEFAULT_ROUND_SIZE), MIN_ROUND_SIZE, MAX_ROUND_SIZE),
   );
 
   const spinTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
@@ -518,6 +523,20 @@ export default function GameRouletteUI() {
     playTone(523.25, 160, 0.05, 'triangle');
     window.setTimeout(() => playTone(659.25, 180, 0.05, 'triangle'), 120);
     window.setTimeout(() => playTone(783.99, 260, 0.06, 'triangle'), 250);
+  };
+
+  const resetRouletteSettings = () => {
+    setRatingMin(MIN_RATING);
+    setRatingMax(MAX_RATING);
+    setPeriodMinIndex(0);
+    setPeriodMaxIndex(PERIOD_BUCKETS.length - 1);
+    setRoundSize(DEFAULT_ROUND_SIZE);
+
+    window.localStorage.removeItem(LS_RATING_MIN);
+    window.localStorage.removeItem(LS_RATING_MAX);
+    window.localStorage.removeItem(LS_PERIOD_MIN_INDEX);
+    window.localStorage.removeItem(LS_PERIOD_MAX_INDEX);
+    window.localStorage.removeItem(LS_ROUND_SIZE);
   };
 
   const handleSpin = () => {
@@ -796,7 +815,6 @@ export default function GameRouletteUI() {
                 <div className="mb-4 flex items-center justify-between gap-4">
                   <div>
                     <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Громкость</div>
-                    <div className="mt-1 text-sm leading-[1.2] text-zinc-400">0% = без звука</div>
                   </div>
                   <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
                     {soundVolume}%
@@ -828,9 +846,6 @@ export default function GameRouletteUI() {
                   <div className="mb-4 flex items-center justify-between gap-4">
                     <div>
                       <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Рейтинг</div>
-                      <div className="mt-1 text-sm leading-[1.2] text-zinc-400">
-                        От {ratingMin.toFixed(1)} до {ratingMax.toFixed(1)}
-                      </div>
                     </div>
                     <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
                       {ratingMin.toFixed(1)}–{ratingMax.toFixed(1)}
@@ -852,9 +867,6 @@ export default function GameRouletteUI() {
                   <div className="mb-4 flex items-center justify-between gap-4">
                     <div>
                       <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Период</div>
-                      <div className="mt-1 text-sm leading-[1.2] text-zinc-400">
-                        {getPeriodDisplay(periodMinIndex, periodMaxIndex)}
-                      </div>
                     </div>
                     <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
                       {getPeriodDisplay(periodMinIndex, periodMaxIndex)}
@@ -876,9 +888,6 @@ export default function GameRouletteUI() {
                   <div className="mb-4 flex items-center justify-between gap-4">
                     <div>
                       <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Игр в раунде</div>
-                      <div className="mt-1 text-sm leading-[1.2] text-zinc-400">
-                        От {MIN_ROUND_SIZE} до {MAX_ROUND_SIZE}
-                      </div>
                     </div>
                     <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
                       {roundSize}
@@ -899,8 +908,18 @@ export default function GameRouletteUI() {
                   />
                 </div>
 
-                <div className="rounded-full bg-white px-4 py-3 text-[16px] font-medium text-black xl:text-[18px]">
-                  Игр в списке: {filteredGamesDb.length}
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 rounded-full bg-white px-4 py-3 text-[16px] font-medium text-black xl:text-[18px]">
+                    Игр в списке: {filteredGamesDb.length}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={resetRouletteSettings}
+                    className="inline-flex shrink-0 rounded-full bg-white px-5 py-3 text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:text-[18px]"
+                  >
+                    Сброс
+                  </button>
                 </div>
               </div>
             </div>
