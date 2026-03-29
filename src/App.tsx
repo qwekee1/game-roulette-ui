@@ -292,19 +292,19 @@ function DualRangeSlider({
 
   const isOverlapping = Math.abs(minValue - maxValue) < step + 0.00001;
 
-  let minThumbShift = '0px';
-  let maxThumbShift = '0px';
+  let minThumbShiftPx = 0;
+  let maxThumbShiftPx = 0;
 
   if (isOverlapping) {
     if (minValue === min && maxValue === min) {
-      minThumbShift = '0px';
-      maxThumbShift = `${OVERLAP_THUMB_OFFSET_PX}px`;
+      minThumbShiftPx = 0;
+      maxThumbShiftPx = OVERLAP_THUMB_OFFSET_PX;
     } else if (minValue === max && maxValue === max) {
-      minThumbShift = `-${OVERLAP_THUMB_OFFSET_PX}px`;
-      maxThumbShift = '0px';
+      minThumbShiftPx = -OVERLAP_THUMB_OFFSET_PX;
+      maxThumbShiftPx = 0;
     } else {
-      minThumbShift = `-${OVERLAP_THUMB_OFFSET_PX}px`;
-      maxThumbShift = `${OVERLAP_THUMB_OFFSET_PX}px`;
+      minThumbShiftPx = -OVERLAP_THUMB_OFFSET_PX;
+      maxThumbShiftPx = OVERLAP_THUMB_OFFSET_PX;
     }
   }
 
@@ -320,6 +320,20 @@ function DualRangeSlider({
         }}
       />
 
+      <div
+        className="pointer-events-none absolute top-1/2 z-40 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.3)]"
+        style={{
+          left: `calc(${leftPercent}% - ${THUMB_SIZE_PX / 2}px + ${minThumbShiftPx}px)`,
+        }}
+      />
+
+      <div
+        className="pointer-events-none absolute top-1/2 z-40 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.3)]"
+        style={{
+          left: `calc(${rightPercent}% - ${THUMB_SIZE_PX / 2}px + ${maxThumbShiftPx}px)`,
+        }}
+      />
+
       <input
         type="range"
         min={min}
@@ -328,10 +342,7 @@ function DualRangeSlider({
         value={minValue}
         onChange={(event) => onMinChange(Number(event.target.value))}
         className="range-thumb pointer-events-none absolute left-0 top-1/2 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
-        style={{
-          zIndex: isOverlapping ? 40 : 20,
-          ['--thumb-shift' as string]: minThumbShift,
-        }}
+        style={{ zIndex: isOverlapping ? 40 : 20 }}
       />
 
       <input
@@ -342,10 +353,7 @@ function DualRangeSlider({
         value={maxValue}
         onChange={(event) => onMaxChange(Number(event.target.value))}
         className="range-thumb pointer-events-none absolute left-0 top-1/2 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
-        style={{
-          zIndex: 30,
-          ['--thumb-shift' as string]: maxThumbShift,
-        }}
+        style={{ zIndex: 30 }}
       />
     </div>
   );
@@ -982,17 +990,11 @@ export default function GameRouletteUI() {
               width: 20px;
               height: 20px;
               border-radius: 999px;
-              background: #ffffff;
+              background: transparent;
               cursor: pointer;
-              box-shadow: 0 2px 6px rgba(0,0,0,0.3);
               border: none;
-              position: relative;
-              transform: translateX(var(--thumb-shift, 0px));
-              transition: transform 0.15s ease;
-            }
-
-            .range-thumb::-webkit-slider-thumb:hover {
-              transform: translateX(var(--thumb-shift, 0px)) scale(1.08);
+              box-shadow: none;
+              opacity: 0;
             }
 
             .range-thumb::-moz-range-thumb {
@@ -1000,11 +1002,11 @@ export default function GameRouletteUI() {
               width: 20px;
               height: 20px;
               border-radius: 999px;
-              background: #ffffff;
+              background: transparent;
               cursor: pointer;
               border: none;
-              box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-              transform: translateX(var(--thumb-shift, 0px));
+              box-shadow: none;
+              opacity: 0;
             }
           `}</style>
         </div>
