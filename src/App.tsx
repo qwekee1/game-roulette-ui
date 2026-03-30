@@ -708,15 +708,15 @@ export default function GameRouletteUI() {
       <div className="mx-auto flex h-full w-full max-w-[1728px] items-stretch gap-4 p-4">
         <aside className="flex w-[320px] shrink-0 flex-col rounded-[34px] bg-[#101115] px-6 py-6 xl:w-[360px]">
           <div className="rounded-[30px] bg-[#17191e] p-4">
-            <div className="overflow-hidden rounded-[26px] bg-gradient-to-br from-zinc-100 via-zinc-200 to-zinc-300">
+            <div className="overflow-hidden rounded-[18px] bg-gradient-to-br from-zinc-100 via-zinc-200 to-zinc-300">
               {selectedGame?.assets?.stopgameCoverUrl ? (
                 <img
                   src={selectedGame.assets.stopgameCoverUrl}
                   alt={selectedGame.title}
-                  className="aspect-square w-full object-cover"
+                  className="aspect-video w-full object-cover"
                 />
               ) : (
-                <div className="flex aspect-square items-center justify-center bg-[radial-gradient(circle_at_70%_30%,rgba(255,190,92,0.35),transparent_28%),radial-gradient(circle_at_30%_70%,rgba(93,157,255,0.25),transparent_26%),linear-gradient(180deg,#f8f8f8,#dfe6ef)]">
+                <div className="flex aspect-video items-center justify-center bg-[radial-gradient(circle_at_70%_30%,rgba(255,190,92,0.35),transparent_28%),radial-gradient(circle_at_30%_70%,rgba(93,157,255,0.25),transparent_26%),linear-gradient(180deg,#f8f8f8,#dfe6ef)]">
                   <div className="text-center text-zinc-800">
                     <div className="px-4 text-[14px] font-black leading-[1.15] tracking-[0.12em] xl:text-[16px]">
                       {selectedGame?.title?.toUpperCase() ?? ''}
@@ -724,7 +724,7 @@ export default function GameRouletteUI() {
                     <div className="mt-2 whitespace-nowrap text-[10px] font-semibold tracking-[0.38em] text-zinc-600 xl:text-[12px]">
                       {selectedGame ? 'WINNER' : ''}
                     </div>
-                    <div className="mt-10 whitespace-nowrap text-xs text-zinc-500 xl:text-sm">
+                    <div className="mt-6 whitespace-nowrap text-xs text-zinc-500 xl:text-sm">
                       {selectedGame ? 'Обложка игры' : ''}
                     </div>
                   </div>
