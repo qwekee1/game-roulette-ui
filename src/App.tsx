@@ -203,11 +203,6 @@ function getRatingText(game: GameEntry | null): string {
   return game.rating?.text ?? game.rating?.value?.toFixed(1) ?? '—';
 }
 
-function getPeriodText(game: GameEntry | null): string {
-  if (!game) return '—';
-  return game.period?.label ?? '—';
-}
-
 function getStopgameButtonHref(game: GameEntry | null): string {
   return game?.stopgameUrl ?? 'https://stopgame.ru/';
 }
@@ -261,6 +256,20 @@ function readNumberFromStorage(key: string, fallback: number): number {
 
 function getPeriodDisplay(periodMinIndex: number, periodMaxIndex: number): string {
   return `${PERIOD_BUCKETS[periodMinIndex].start}–${PERIOD_BUCKETS[periodMaxIndex].end}`;
+}
+
+async function fetchStopgameCover(stopgameUrl: string): Promise<string | null> {
+  if (!stopgameUrl) return null;
+
+  try {
+    const response = await fetch(`/api/stopgame-cover?url=${encodeURIComponent(stopgameUrl)}`);
+    if (!response.ok) return null;
+
+    const data = (await response.json()) as { imageUrl?: string | null };
+    return data.imageUrl ?? null;
+  } catch {
+    return null;
+  }
 }
 
 type RangeSliderProps = {
@@ -399,6 +408,7 @@ export default function GameRouletteUI() {
   const finalizeTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const tickTimeoutsRef = useRef<Array<ReturnType<typeof window.setTimeout>>>([]);
+  const coverRequestIdRef = useRef(0);
 
   const filteredGamesDb = useMemo(() => {
     return gamesDb.filter((game) =>
@@ -460,6 +470,46 @@ export default function GameRouletteUI() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!selectedGame?.stopgameUrl) return;
+    if (selectedGame.assets?.stopgameCoverFetched) return;
+
+    const requestId = ++coverRequestIdRef.current;
+
+    void (async () => {
+      const coverUrl = await fetchStopgameCover(selectedGame.stopgameUrl);
+      if (requestId !== coverRequestIdRef.current) return;
+
+      setSelectedGame((prev) => {
+        if (!prev || prev.id !== selectedGame.id) return prev;
+
+        return {
+          ...prev,
+          assets: {
+            ...prev.assets,
+            stopgameCoverUrl: coverUrl,
+            stopgameCoverFetched: true,
+          },
+        };
+      });
+
+      setSpinPool((prev) =>
+        prev.map((game) =>
+          game.id === selectedGame.id
+            ? {
+                ...game,
+                assets: {
+                  ...game.assets,
+                  stopgameCoverUrl: coverUrl,
+                  stopgameCoverFetched: true,
+                },
+              }
+            : game,
+        ),
+      );
+    })();
+  }, [selectedGame]);
 
   const visibleGames = useMemo(() => {
     if (repeatedSpinPool.length === 0) return [];
@@ -579,7 +629,14 @@ export default function GameRouletteUI() {
     if (finalizeTimeoutRef.current !== null) window.clearTimeout(finalizeTimeoutRef.current);
     clearTickTimeouts();
 
-    const newRoundGames = getRandomGames(filteredGamesDb, roundSize);
+    const newRoundGames = getRandomGames(filteredGamesDb, roundSize).map((game) => ({
+      ...game,
+      assets: {
+        ...game.assets,
+        stopgameCoverFetched: false,
+      },
+    }));
+
     if (newRoundGames.length === 0) return;
 
     const repeatedPool = Array.from(
@@ -653,7 +710,11 @@ export default function GameRouletteUI() {
           <div className="rounded-[30px] bg-[#17191e] p-4">
             <div className="overflow-hidden rounded-[26px] bg-gradient-to-br from-zinc-100 via-zinc-200 to-zinc-300">
               {selectedGame?.assets?.stopgameCoverUrl ? (
-                <img src={selectedGame.assets.stopgameCoverUrl} alt={selectedGame.title} className="aspect-square w-full object-cover" />
+                <img
+                  src={selectedGame.assets.stopgameCoverUrl}
+                  alt={selectedGame.title}
+                  className="aspect-square w-full object-cover"
+                />
               ) : (
                 <div className="flex aspect-square items-center justify-center bg-[radial-gradient(circle_at_70%_30%,rgba(255,190,92,0.35),transparent_28%),radial-gradient(circle_at_30%_70%,rgba(93,157,255,0.25),transparent_26%),linear-gradient(180deg,#f8f8f8,#dfe6ef)]">
                   <div className="text-center text-zinc-800">
@@ -681,6 +742,7 @@ export default function GameRouletteUI() {
           <div className="mt-7 space-y-2.5 xl:space-y-3">
             <InfoRow label="Оценка" value={getRatingText(selectedGame)} />
             <InfoRow label="Время прохождения" value="14" />
+
             <div className="relative">
               <div className="flex items-center gap-2.5 xl:gap-3">
                 <Pill>Сложность</Pill>
@@ -744,6 +806,7 @@ export default function GameRouletteUI() {
                 </div>
               )}
             </div>
+
             <InfoRow label="Очки" value="69" />
           </div>
 
@@ -1101,7 +1164,9 @@ function InfoRow({
 
 function Pill({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`inline-flex h-[42px] items-center justify-center rounded-full bg-white px-3 text-[16px] font-medium text-black xl:h-[48px] xl:px-4 xl:text-[18px] ${className}`}>
+    <div
+      className={`inline-flex h-[42px] items-center justify-center rounded-full bg-white px-3 text-[16px] font-medium text-black xl:h-[48px] xl:px-4 xl:text-[18px] ${className}`}
+    >
       <span className="block truncate leading-[1.15]">{children}</span>
     </div>
   );
