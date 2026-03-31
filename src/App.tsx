@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import rawDatabase from './data/games_roulette_database_merged.json';
 
 type Difficulty = 'Очень легко' | 'Легко' | 'Нормально' | 'Сложно' | 'Хардкор';
+type ActiveThumb = 'min' | 'max';
 
 type AudioContextCtor = {
   new (): AudioContext;
@@ -84,7 +85,6 @@ const LS_PERIOD_MAX_INDEX = 'roulettePeriodMaxIndex';
 const LS_ROUND_SIZE = 'rouletteRoundSize';
 
 const THUMB_SIZE_PX = 20;
-const OVERLAP_THUMB_OFFSET_PX = 8;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -291,6 +291,8 @@ function DualRangeSlider({
   onMinChange,
   onMaxChange,
 }: RangeSliderProps) {
+  const [activeThumb, setActiveThumb] = useState<ActiveThumb>('max');
+
   const range = max - min;
   const safeRange = range === 0 ? 1 : range;
   const leftPercent = ((minValue - min) / safeRange) * 100;
@@ -298,24 +300,13 @@ function DualRangeSlider({
 
   const leftOffsetPx = minValue === min ? 0 : THUMB_SIZE_PX / 2;
   const rightOffsetPx = maxValue === max ? 0 : THUMB_SIZE_PX / 2;
+  const isMerged = minValue === maxValue;
 
-  const isExactlySameValue = minValue === maxValue;
+  const minInputZIndex = isMerged ? (activeThumb === 'min' ? 40 : 30) : activeThumb === 'min' ? 40 : 20;
+  const maxInputZIndex = isMerged ? (activeThumb === 'max' ? 40 : 30) : activeThumb === 'max' ? 40 : 30;
 
-  let minThumbShiftPx = 0;
-  let maxThumbShiftPx = 0;
-
-  if (isExactlySameValue) {
-    if (minValue === min && maxValue === min) {
-      minThumbShiftPx = 0;
-      maxThumbShiftPx = OVERLAP_THUMB_OFFSET_PX;
-    } else if (minValue === max && maxValue === max) {
-      minThumbShiftPx = -OVERLAP_THUMB_OFFSET_PX;
-      maxThumbShiftPx = 0;
-    } else {
-      minThumbShiftPx = -OVERLAP_THUMB_OFFSET_PX;
-      maxThumbShiftPx = OVERLAP_THUMB_OFFSET_PX;
-    }
-  }
+  const minVisualZIndex = isMerged ? (activeThumb === 'min' ? 41 : 40) : 40;
+  const maxVisualZIndex = isMerged ? (activeThumb === 'max' ? 41 : 40) : 40;
 
   return (
     <div className="relative h-8">
@@ -330,16 +321,18 @@ function DualRangeSlider({
       />
 
       <div
-        className="pointer-events-none absolute top-1/2 z-40 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.3)]"
+        className="pointer-events-none absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.3)]"
         style={{
-          left: `calc(${leftPercent}% - ${THUMB_SIZE_PX / 2}px + ${minThumbShiftPx}px)`,
+          left: `calc(${leftPercent}% - ${THUMB_SIZE_PX / 2}px)`,
+          zIndex: minVisualZIndex,
         }}
       />
 
       <div
-        className="pointer-events-none absolute top-1/2 z-40 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.3)]"
+        className="pointer-events-none absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.3)]"
         style={{
-          left: `calc(${rightPercent}% - ${THUMB_SIZE_PX / 2}px + ${maxThumbShiftPx}px)`,
+          left: `calc(${rightPercent}% - ${THUMB_SIZE_PX / 2}px)`,
+          zIndex: maxVisualZIndex,
         }}
       />
 
@@ -349,9 +342,15 @@ function DualRangeSlider({
         max={max}
         step={step}
         value={minValue}
-        onChange={(event) => onMinChange(Number(event.target.value))}
+        onPointerDown={() => setActiveThumb('min')}
+        onMouseDown={() => setActiveThumb('min')}
+        onTouchStart={() => setActiveThumb('min')}
+        onChange={(event) => {
+          setActiveThumb('min');
+          onMinChange(Number(event.target.value));
+        }}
         className="range-thumb pointer-events-none absolute left-0 top-1/2 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
-        style={{ zIndex: isExactlySameValue ? 40 : 20 }}
+        style={{ zIndex: minInputZIndex }}
       />
 
       <input
@@ -360,9 +359,15 @@ function DualRangeSlider({
         max={max}
         step={step}
         value={maxValue}
-        onChange={(event) => onMaxChange(Number(event.target.value))}
+        onPointerDown={() => setActiveThumb('max')}
+        onMouseDown={() => setActiveThumb('max')}
+        onTouchStart={() => setActiveThumb('max')}
+        onChange={(event) => {
+          setActiveThumb('max');
+          onMaxChange(Number(event.target.value));
+        }}
         className="range-thumb pointer-events-none absolute left-0 top-1/2 h-8 w-full -translate-y-1/2 appearance-none bg-transparent"
-        style={{ zIndex: 30 }}
+        style={{ zIndex: maxInputZIndex }}
       />
     </div>
   );
@@ -741,7 +746,7 @@ export default function GameRouletteUI() {
 
           <div className="mt-7 space-y-2.5 xl:space-y-3">
             <InfoRow label="Оценка" value={getRatingText(selectedGame)} />
-            <InfoRow label="Время прохождения" value="14" />
+            <InfoRow label="Время прохождения" value="—" />
 
             <div className="relative">
               <div className="flex items-center gap-2.5 xl:gap-3">
@@ -807,7 +812,7 @@ export default function GameRouletteUI() {
               )}
             </div>
 
-            <InfoRow label="Очки" value="69" />
+            <InfoRow label="Очки" value="—" />
           </div>
 
           <div className="mt-auto pt-5">
