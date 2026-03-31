@@ -722,15 +722,9 @@ export default function GameRouletteUI() {
                 />
               ) : (
                 <div className="flex aspect-video items-center justify-center bg-[radial-gradient(circle_at_70%_30%,rgba(255,190,92,0.35),transparent_28%),radial-gradient(circle_at_30%_70%,rgba(93,157,255,0.25),transparent_26%),linear-gradient(180deg,#f8f8f8,#dfe6ef)]">
-                  <div className="text-center text-zinc-800">
-                    <div className="px-4 text-[14px] font-black leading-[1.15] tracking-[0.12em] xl:text-[16px]">
+                  <div className="flex h-full w-full items-center justify-center px-6 text-center text-zinc-800">
+                    <div className="text-[14px] font-black leading-[1.15] tracking-[0.12em] xl:text-[16px]">
                       {selectedGame?.title?.toUpperCase() ?? ''}
-                    </div>
-                    <div className="mt-2 whitespace-nowrap text-[10px] font-semibold tracking-[0.38em] text-zinc-600 xl:text-[12px]">
-                      {selectedGame ? 'WINNER' : ''}
-                    </div>
-                    <div className="mt-6 whitespace-nowrap text-xs text-zinc-500 xl:text-sm">
-                      {selectedGame ? 'Обложка игры' : ''}
                     </div>
                   </div>
                 </div>
@@ -738,7 +732,7 @@ export default function GameRouletteUI() {
             </div>
 
             <div className="flex h-[54px] items-center justify-center pt-4 xl:h-[64px]">
-              <div className="w-full truncate pb-1 text-center text-[28px] font-semibold leading-[1.12] tracking-[-0.03em] xl:text-[36px]">
+              <div className="w-full truncate pb-1 text-center text-[30px] font-semibold leading-[1.12] tracking-[-0.03em]">
                 {selectedGame?.title ?? '\u00A0'}
               </div>
             </div>
