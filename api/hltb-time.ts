@@ -1,233 +1,269 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-type DebugCandidate = {
+type Candidate = {
   title: string;
-  mainRaw: unknown;
-  mainExtraRaw: unknown;
-  completionistRaw: unknown;
-  source: string;
+  main: number | null;
+  mainExtra: number | null;
+  completionist: number | null;
 };
+
+function decodeHtml(value: string): string {
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ');
+}
+
+function normalizeSpaces(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function normalizeTitle(value: string): string {
+  return normalizeSpaces(
+    value
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .replace(/\b(game of the year|goty|definitive edition|complete edition|remastered|redux|enhanced edition|director s cut|ultimate edition|collection)\b/gu, ' ')
+      .replace(/\s+/g, ' '),
+  );
+}
 
 function uniqueStrings(items: string[]): string[] {
   return [...new Set(items.map((item) => item.trim()).filter(Boolean))];
 }
 
-function normalizeTitle(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 function buildSearchVariants(title: string): string[] {
   const base = title.trim();
   const normalized = normalizeTitle(base);
+  const noArticles = normalized.replace(/\b(the|a|an)\b/gu, ' ').replace(/\s+/g, ' ').trim();
   const colonCut = base.split(':')[0]?.trim() ?? '';
   const dashCut = base.split('-')[0]?.trim() ?? '';
 
-  return uniqueStrings([base, normalized, colonCut, dashCut]);
+  return uniqueStrings([base, normalized, noArticles, colonCut, dashCut]);
 }
 
-function asString(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : '';
+function toDisplayText(hours: number | null | undefined): string | null {
+  if (hours == null || !Number.isFinite(hours) || hours <= 0) return null;
+
+  const rounded = Math.round(hours * 10) / 10;
+  return Number.isInteger(rounded) ? `${rounded} ч` : `${rounded.toFixed(1)} ч`;
 }
 
-function collectDirectCandidates(payload: unknown, source: string): DebugCandidate[] {
-  const out: DebugCandidate[] = [];
+function scoreCandidate(candidate: Candidate, query: string): number {
+  const q = normalizeTitle(query);
+  const t = normalizeTitle(candidate.title);
 
-  const walk = (value: unknown) => {
-    if (!value) return;
+  if (!t) return -1;
 
-    if (Array.isArray(value)) {
-      for (const item of value) walk(item);
-      return;
-    }
+  let score = 0;
 
-    if (typeof value !== 'object') return;
+  if (t === q) score += 100;
+  if (t.includes(q)) score += 40;
+  if (q.includes(t)) score += 20;
 
-    const obj = value as Record<string, unknown>;
+  const qWords = q.split(' ').filter(Boolean);
+  const tWords = t.split(' ').filter(Boolean);
 
-    const title =
-      asString(obj.game_name) ||
-      asString(obj.gameName) ||
-      asString(obj.title) ||
-      asString(obj.name);
+  for (const word of qWords) {
+    if (tWords.includes(word)) score += 5;
+  }
 
-    const mainRaw = obj.comp_main ?? obj.gameplayMain ?? obj.main;
-    const mainExtraRaw = obj.comp_plus ?? obj.gameplayMainExtra ?? obj.mainExtra;
-    const completionistRaw = obj.comp_100 ?? obj.gameplayCompletionist ?? obj.completionist;
+  if (candidate.main != null) score += 5;
+  if (candidate.mainExtra != null) score += 3;
+  if (candidate.completionist != null) score += 2;
 
-    if (title && (mainRaw != null || mainExtraRaw != null || completionistRaw != null)) {
-      out.push({
-        title,
-        mainRaw,
-        mainExtraRaw,
-        completionistRaw,
-        source,
-      });
-    }
-
-    for (const child of Object.values(obj)) {
-      if (child && typeof child === 'object') walk(child);
-    }
-  };
-
-  walk(payload);
-  return out;
+  return score;
 }
 
-function collectPublicCandidates(payload: unknown, source: string): DebugCandidate[] {
-  const out: DebugCandidate[] = [];
+function dedupeCandidates(candidates: Candidate[]): Candidate[] {
+  const map = new Map<string, Candidate>();
 
-  if (!payload || typeof payload !== 'object') return out;
+  for (const candidate of candidates) {
+    const key = `${normalizeTitle(candidate.title)}|${candidate.main ?? ''}|${candidate.mainExtra ?? ''}|${candidate.completionist ?? ''}`;
+    if (!map.has(key)) {
+      map.set(key, candidate);
+    }
+  }
 
-  const root = payload as Record<string, unknown>;
-  const results = Array.isArray(root.results) ? root.results : [];
+  return [...map.values()];
+}
 
-  for (const item of results) {
-    if (!item || typeof item !== 'object') continue;
+function parseHourText(value: string): number | null {
+  const text = normalizeSpaces(decodeHtml(value));
 
-    const obj = item as Record<string, unknown>;
-    const title = asString(obj.title);
-    const times = (obj.times && typeof obj.times === 'object') ? (obj.times as Record<string, unknown>) : {};
+  const patterns = [
+    /(\d+(?:\.\d+)?)\s*(?:Hours|Hour|Hrs|Hr)\b/i,
+    /(\d+(?:\.\d+)?)\s*(?:Mins|Min)\b/i,
+  ];
 
+  const hourMatch = text.match(patterns[0]);
+  if (hourMatch?.[1]) {
+    const hours = Number(hourMatch[1]);
+    if (Number.isFinite(hours) && hours > 0) return hours;
+  }
+
+  const minMatch = text.match(patterns[1]);
+  if (minMatch?.[1]) {
+    const mins = Number(minMatch[1]);
+    if (Number.isFinite(mins) && mins > 0) return Math.round((mins / 60) * 10) / 10;
+  }
+
+  return null;
+}
+
+function stripTags(html: string): string {
+  return normalizeSpaces(decodeHtml(html.replace(/<[^>]+>/g, ' ')));
+}
+
+function extractCellValue(rowHtml: string): number | null {
+  const strongMatch = rowHtml.match(/<strong[^>]*>([\s\S]*?)<\/strong>/i);
+  if (strongMatch?.[1]) {
+    const parsed = parseHourText(strongMatch[1]);
+    if (parsed != null) return parsed;
+  }
+
+  const plain = stripTags(rowHtml);
+  return parseHourText(plain);
+}
+
+function extractLabel(rowHtml: string): string {
+  const plain = stripTags(rowHtml);
+  return normalizeTitle(plain);
+}
+
+function parseCandidatesFromHtml(html: string): Candidate[] {
+  const decodedHtml = decodeHtml(html);
+  const candidates: Candidate[] = [];
+
+  const gameBlocks =
+    decodedHtml.match(/<li[^>]*class="[^"]*back_darkish[^"]*"[\s\S]*?<\/li>/gi) ??
+    decodedHtml.match(/<li[\s\S]*?<\/li>/gi) ??
+    [];
+
+  for (const block of gameBlocks) {
+    const titleMatch =
+      block.match(/<a[^>]*>([\s\S]*?)<\/a>/i) ??
+      block.match(/<h3[^>]*>([\s\S]*?)<\/h3>/i);
+
+    const title = titleMatch ? stripTags(titleMatch[1]) : '';
     if (!title) continue;
 
-    out.push({
-      title,
-      mainRaw: times.main ?? null,
-      mainExtraRaw: times.mainExtra ?? null,
-      completionistRaw: times.completionist ?? null,
-      source,
-    });
+    let main: number | null = null;
+    let mainExtra: number | null = null;
+    let completionist: number | null = null;
+
+    const rowMatches = block.match(/<li[\s\S]*?<\/li>/gi) ?? block.match(/<div[\s\S]*?<\/div>/gi) ?? [];
+
+    for (const row of rowMatches) {
+      const label = extractLabel(row);
+      const value = extractCellValue(row);
+      if (value == null) continue;
+
+      if (label.includes('main story') || label === 'main') {
+        if (main == null) main = value;
+      } else if (label.includes('main + extras') || label.includes('main extras') || label.includes('main + sides')) {
+        if (mainExtra == null) mainExtra = value;
+      } else if (label.includes('completionist')) {
+        if (completionist == null) completionist = value;
+      }
+    }
+
+    if (main == null && mainExtra == null && completionist == null) {
+      const genericStrongs = block.match(/<strong[^>]*>[\s\S]*?<\/strong>/gi) ?? [];
+      const genericValues = genericStrongs
+        .map((item) => parseHourText(item))
+        .filter((item): item is number => item != null);
+
+      if (genericValues[0] != null) main = genericValues[0];
+      if (genericValues[1] != null) mainExtra = genericValues[1];
+      if (genericValues[2] != null) completionist = genericValues[2];
+    }
+
+    if (main != null || mainExtra != null || completionist != null) {
+      candidates.push({
+        title,
+        main,
+        mainExtra,
+        completionist,
+      });
+    }
   }
 
-  return out;
+  return candidates;
 }
 
-async function fetchDirect(query: string) {
-  const payload = {
-    searchType: 'games',
-    searchTerms: query.split(/\s+/).filter(Boolean),
-    searchPage: 1,
-    size: 20,
-    searchOptions: {
-      games: {
-        userId: 0,
-        platform: '',
-        sortCategory: 'popular',
-        rangeCategory: 'main',
-        rangeTime: {
-          min: 0,
-          max: 0,
-        },
-        gameplay: {
-          perspective: '',
-          flow: '',
-          genre: '',
-        },
-        modifier: '',
+async function searchLegacy(query: string): Promise<Candidate[]> {
+  const form = new URLSearchParams();
+  form.set('queryString', query);
+  form.set('t', 'games');
+  form.set('sorthead', 'popular');
+  form.set('sortd', 'Normal Order');
+  form.set('plat', '');
+  form.set('detail', '0');
+
+  const response = await fetch(
+    'https://howlongtobeat.com/search_main.php?page=1',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        accept: 'text/html, */*; q=0.01',
+        origin: 'https://howlongtobeat.com',
+        referer: 'https://howlongtobeat.com/',
+        'user-agent': 'Mozilla/5.0',
+        'x-requested-with': 'XMLHttpRequest',
       },
+      body: form.toString(),
     },
-  };
+  );
 
-  const response = await fetch('https://howlongtobeat.com/api/search', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      accept: 'application/json, text/plain, */*',
-      origin: 'https://howlongtobeat.com',
-      referer: 'https://howlongtobeat.com/',
-      'user-agent': 'Mozilla/5.0',
-    },
-    body: JSON.stringify(payload),
-  });
+  if (!response.ok) return [];
 
-  const text = await response.text();
-
-  let json: unknown = null;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    json = null;
-  }
-
-  return {
-    ok: response.ok,
-    status: response.status,
-    rawTextPreview: text.slice(0, 2000),
-    candidates: json ? collectDirectCandidates(json, `direct:${query}`) : [],
-  };
-}
-
-async function fetchPublic(query: string) {
-  const response = await fetch(`https://htlb.berkankutuk.dk/api/search?q=${encodeURIComponent(query)}`, {
-    headers: {
-      accept: 'application/json',
-      'user-agent': 'Mozilla/5.0',
-    },
-  });
-
-  const text = await response.text();
-
-  let json: unknown = null;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    json = null;
-  }
-
-  return {
-    ok: response.ok,
-    status: response.status,
-    rawTextPreview: text.slice(0, 2000),
-    candidates: json ? collectPublicCandidates(json, `public:${query}`) : [],
-  };
+  const html = await response.text();
+  return parseCandidatesFromHtml(html);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const rawTitle = Array.isArray(req.query.title) ? req.query.title[0] : req.query.title;
 
   if (!rawTitle || typeof rawTitle !== 'string' || !rawTitle.trim()) {
-    return res.status(200).json({
-      error: 'Missing title',
-    });
+    return res.status(200).json({ displayText: '14' });
   }
 
   const title = rawTitle.trim();
-  const variants = buildSearchVariants(title);
 
   try {
-    const debug = [];
+    const variants = buildSearchVariants(title);
+    let candidates: Candidate[] = [];
 
     for (const variant of variants) {
-      const [direct, publicApi] = await Promise.allSettled([
-        fetchDirect(variant),
-        fetchPublic(variant),
-      ]);
-
-      debug.push({
-        query: variant,
-        direct:
-          direct.status === 'fulfilled'
-            ? direct.value
-            : { ok: false, status: 0, rawTextPreview: String(direct.reason), candidates: [] },
-        publicApi:
-          publicApi.status === 'fulfilled'
-            ? publicApi.value
-            : { ok: false, status: 0, rawTextPreview: String(publicApi.reason), candidates: [] },
-      });
+      const result = await searchLegacy(variant);
+      candidates = candidates.concat(result);
+      if (result.length > 0) break;
     }
 
+    const deduped = dedupeCandidates(candidates);
+
+    if (deduped.length === 0) {
+      return res.status(200).json({ displayText: '14' });
+    }
+
+    const best = [...deduped].sort((a, b) => scoreCandidate(b, title) - scoreCandidate(a, title))[0];
+
+    const displayText =
+      toDisplayText(best.main) ??
+      toDisplayText(best.mainExtra) ??
+      toDisplayText(best.completionist) ??
+      '14';
+
     return res.status(200).json({
-      title,
-      variants,
-      debug,
+      displayText,
+      matchedTitle: best.title,
     });
-  } catch (error) {
-    return res.status(200).json({
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
+  } catch {
+    return res.status(200).json({ displayText: '14' });
   }
 }
