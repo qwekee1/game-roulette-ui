@@ -272,6 +272,20 @@ async function fetchStopgameCover(stopgameUrl: string): Promise<string | null> {
   }
 }
 
+async function fetchHltbTime(gameTitle: string): Promise<string> {
+  if (!gameTitle) return '14';
+
+  try {
+    const response = await fetch(`/api/hltb-time?title=${encodeURIComponent(gameTitle)}`);
+    if (!response.ok) return '14';
+
+    const data = (await response.json()) as { displayText?: string | null };
+    return data.displayText?.trim() || '14';
+  } catch {
+    return '14';
+  }
+}
+
 type RangeSliderProps = {
   min: number;
   max: number;
@@ -381,6 +395,7 @@ export default function GameRouletteUI() {
   const [spinTransition, setSpinTransition] = useState('none');
   const [spinSequence, setSpinSequence] = useState<GameEntry[] | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [hltbTime, setHltbTime] = useState('14');
 
   const [soundVolume, setSoundVolume] = useState<number>(() => {
     const saved = window.localStorage.getItem(LS_SOUND_VOLUME);
@@ -409,6 +424,7 @@ export default function GameRouletteUI() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const tickTimeoutsRef = useRef<Array<ReturnType<typeof window.setTimeout>>>([]);
   const coverRequestIdRef = useRef(0);
+  const hltbRequestIdRef = useRef(0);
 
   const filteredGamesDb = useMemo(() => {
     return gamesDb.filter((game) =>
@@ -455,6 +471,7 @@ export default function GameRouletteUI() {
       setSpinTransition('none');
       setSpinTranslate(0);
       setCenterIndex(0);
+      setHltbTime('14');
     }
   }, [filteredGamesDb, selectedGame, spinPool]);
 
@@ -510,6 +527,22 @@ export default function GameRouletteUI() {
       );
     })();
   }, [selectedGame]);
+
+  useEffect(() => {
+    if (!selectedGame?.title) {
+      setHltbTime('14');
+      return;
+    }
+
+    const requestId = ++hltbRequestIdRef.current;
+    setHltbTime('14');
+
+    void (async () => {
+      const time = await fetchHltbTime(selectedGame.title);
+      if (requestId !== hltbRequestIdRef.current) return;
+      setHltbTime(time || '14');
+    })();
+  }, [selectedGame?.title]);
 
   const visibleGames = useMemo(() => {
     if (repeatedSpinPool.length === 0) return [];
@@ -741,7 +774,7 @@ export default function GameRouletteUI() {
 
           <div className="mt-7 space-y-2.5 xl:space-y-3">
             <InfoRow label="Оценка" value={getRatingText(selectedGame)} />
-            <InfoRow label="Время прохождения" value="14" />
+            <InfoRow label="Время прохождения" value={hltbTime} />
 
             <div className="relative">
               <div className="flex items-center gap-2.5 xl:gap-3">
