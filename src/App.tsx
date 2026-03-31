@@ -744,10 +744,10 @@ export default function GameRouletteUI() {
                     <img
                       src={selectedGame.assets.stopgameCoverUrl}
                       alt={selectedGame.title}
-                      className="block aspect-video w-full object-cover"
+                      className="block aspect-square w-full object-cover"
                     />
                   ) : (
-                    <div className="flex aspect-video items-center justify-center bg-[radial-gradient(circle_at_70%_30%,rgba(255,190,92,0.35),transparent_28%),radial-gradient(circle_at_30%_70%,rgba(93,157,255,0.25),transparent_26%),linear-gradient(180deg,#f8f8f8,#dfe6ef)]">
+                    <div className="flex aspect-square items-center justify-center bg-[radial-gradient(circle_at_70%_30%,rgba(255,190,92,0.35),transparent_28%),radial-gradient(circle_at_30%_70%,rgba(93,157,255,0.25),transparent_26%),linear-gradient(180deg,#f8f8f8,#dfe6ef)]">
                       <div className="flex h-full w-full items-center justify-center px-6 text-center text-zinc-800">
                         <div className="text-[14px] font-black leading-[1.15] tracking-[0.12em] xl:text-[16px]">
                           {selectedGame?.title?.toUpperCase() ?? ''}
