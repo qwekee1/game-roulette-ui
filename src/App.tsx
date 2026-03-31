@@ -739,12 +739,12 @@ export default function GameRouletteUI() {
           <div className="mx-auto flex h-full w-full max-w-[1728px] items-stretch gap-4 p-4">
             <aside className="flex w-[320px] shrink-0 flex-col rounded-[34px] bg-[#101115] px-6 py-6 xl:w-[360px]">
               <div className="rounded-[30px] bg-[#17191e] p-4">
-                <div className="overflow-hidden rounded-[18px] bg-gradient-to-br from-zinc-100 via-zinc-200 to-zinc-300">
+                <div className="overflow-hidden rounded-[18px] bg-transparent leading-none">
                   {selectedGame?.assets?.stopgameCoverUrl ? (
                     <img
                       src={selectedGame.assets.stopgameCoverUrl}
                       alt={selectedGame.title}
-                      className="aspect-video w-full object-cover"
+                      className="block aspect-video w-full object-cover"
                     />
                   ) : (
                     <div className="flex aspect-video items-center justify-center bg-[radial-gradient(circle_at_70%_30%,rgba(255,190,92,0.35),transparent_28%),radial-gradient(circle_at_30%_70%,rgba(93,157,255,0.25),transparent_26%),linear-gradient(180deg,#f8f8f8,#dfe6ef)]">
