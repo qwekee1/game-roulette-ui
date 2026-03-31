@@ -1,12 +1,20 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+type Candidate = {
+  title: string;
+  main: number | null;
+  mainExtra: number | null;
+  completionist: number | null;
+  source: string;
+};
+
 function decodeHtml(value: string): string {
   return value
     .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, ' ')
+    .replace(/&gt;/g, '>')
     .replace(/&nbsp;/g, ' ');
 }
 
@@ -14,109 +22,211 @@ function normalizeSpaces(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
-function buildAbsoluteUrl(pathOrUrl: string): string {
-  try {
-    return new URL(pathOrUrl, 'https://howlongtobeat.com').toString();
-  } catch {
-    return '';
-  }
-}
-
-function toDisplayTextFromHours(hours: number | null | undefined): string | null {
-  if (hours == null || !Number.isFinite(hours) || hours <= 0) return null;
-
-  const rounded = Math.round(hours * 10) / 10;
-  if (Number.isInteger(rounded)) return `${rounded} ч`;
-  return `${rounded.toFixed(1)} ч`;
-}
-
 function normalizeTitle(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+  return normalizeSpaces(
+    value
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .replace(/\b(game of the year|goty|definitive edition|complete edition|remastered|redux|enhanced edition|director s cut|ultimate edition|collection)\b/gu, ' ')
+      .replace(/\s+/g, ' '),
+  );
+}
+
+function uniqueStrings(items: string[]): string[] {
+  return [...new Set(items.filter(Boolean))];
+}
+
+function buildSearchVariants(title: string): string[] {
+  const cleaned = normalizeTitle(title);
+  const compact = cleaned
+    .replace(/\b(the|a|an)\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+
+  return uniqueStrings([title.trim(), cleaned, compact]);
 }
 
-function scoreCandidate(url: string, query: string): number {
-  const normalizedQuery = normalizeTitle(query);
-  const decodedUrl = decodeURIComponent(url);
-  const normalizedUrl = normalizeTitle(decodedUrl);
+function scoreCandidate(candidate: Candidate, query: string): number {
+  const q = normalizeTitle(query);
+  const t = normalizeTitle(candidate.title);
+
+  if (!t) return -1;
 
   let score = 0;
 
-  if (normalizedUrl.includes(normalizedQuery)) score += 100;
+  if (t === q) score += 100;
+  if (t.includes(q)) score += 40;
+  if (q.includes(t)) score += 20;
 
-  const queryWords = normalizedQuery.split(' ').filter(Boolean);
-  for (const word of queryWords) {
-    if (normalizedUrl.includes(word)) score += 5;
+  const qWords = q.split(' ').filter(Boolean);
+  const tWords = t.split(' ').filter(Boolean);
+
+  for (const word of qWords) {
+    if (tWords.includes(word)) score += 5;
   }
+
+  if (candidate.main != null) score += 5;
+  if (candidate.mainExtra != null) score += 3;
+  if (candidate.completionist != null) score += 2;
 
   return score;
 }
 
-function extractGameLinksFromHtml(html: string, query: string): string[] {
-  const links = new Set<string>();
+function normalizeHours(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null;
 
-  const hrefRegex = /href=["']([^"']*\/game\/[^"']+)["']/gi;
+  // HLTB values often come either in hours or in seconds depending on source.
+  if (value > 300) {
+    const hours = value / 3600;
+    return Number.isFinite(hours) && hours > 0 ? hours : null;
+  }
+
+  return value;
+}
+
+function toDisplayText(hours: number | null | undefined): string | null {
+  if (hours == null || !Number.isFinite(hours) || hours <= 0) return null;
+
+  const rounded = Math.round(hours * 10) / 10;
+  return Number.isInteger(rounded) ? `${rounded} ч` : `${rounded.toFixed(1)} ч`;
+}
+
+function fetchNumber(obj: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = normalizeHours(obj[key]);
+    if (value != null) return value;
+  }
+  return null;
+}
+
+function fetchString(obj: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function candidateFromObject(obj: Record<string, unknown>, source: string): Candidate | null {
+  const title = fetchString(obj, [
+    'game_name',
+    'gameName',
+    'title',
+    'name',
+    'game_title',
+    'gameTitle',
+  ]);
+
+  const main = fetchNumber(obj, [
+    'comp_main',
+    'compMain',
+    'main',
+    'mainStory',
+    'gameplayMain',
+  ]);
+
+  const mainExtra = fetchNumber(obj, [
+    'comp_plus',
+    'compPlus',
+    'mainExtra',
+    'main_plus',
+    'mainSides',
+  ]);
+
+  const completionist = fetchNumber(obj, [
+    'comp_100',
+    'comp100',
+    'completionist',
+    'fullComplete',
+  ]);
+
+  if (!title) return null;
+  if (main == null && mainExtra == null && completionist == null) return null;
+
+  return {
+    title,
+    main,
+    mainExtra,
+    completionist,
+    source,
+  };
+}
+
+function collectCandidatesFromValue(
+  value: unknown,
+  source: string,
+  out: Candidate[],
+  visited = new WeakSet<object>(),
+): void {
+  if (!value || typeof value !== 'object') return;
+  if (visited.has(value as object)) return;
+  visited.add(value as object);
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectCandidatesFromValue(item, source, out, visited);
+    }
+    return;
+  }
+
+  const obj = value as Record<string, unknown>;
+  const candidate = candidateFromObject(obj, source);
+  if (candidate) out.push(candidate);
+
+  for (const child of Object.values(obj)) {
+    collectCandidatesFromValue(child, source, out, visited);
+  }
+}
+
+function extractJsonScriptContents(html: string): string[] {
+  const results: string[] = [];
+  const regex = /<script[^>]*type=["']application\/json["'][^>]*>([\s\S]*?)<\/script>/gi;
+
   let match: RegExpExecArray | null = null;
-
-  while ((match = hrefRegex.exec(html)) !== null) {
-    const href = buildAbsoluteUrl(match[1]);
-    if (href) links.add(href);
+  while ((match = regex.exec(html)) !== null) {
+    const content = match[1]?.trim();
+    if (content) results.push(content);
   }
 
-  return [...links].sort((a, b) => scoreCandidate(b, query) - scoreCandidate(a, query));
+  const nextRegex = /<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/gi;
+  while ((match = nextRegex.exec(html)) !== null) {
+    const content = match[1]?.trim();
+    if (content) results.push(content);
+  }
+
+  return uniqueStrings(results);
 }
 
-function extractHoursByLabels(html: string): number | null {
-  const decoded = decodeHtml(html);
+function extractCandidatesFromJsonScripts(html: string, source: string): Candidate[] {
+  const candidates: Candidate[] = [];
+  const scripts = extractJsonScriptContents(html);
 
-  const patterns = [
-    /Main\s*Story[\s\S]{0,200}?(\d+(?:\.\d+)?)\s*(?:Hours|Hour|Hrs|Hr)/i,
-    /Main\s*\+\s*Sides?[\s\S]{0,200}?(\d+(?:\.\d+)?)\s*(?:Hours|Hour|Hrs|Hr)/i,
-    /Completionist[\s\S]{0,200}?(\d+(?:\.\d+)?)\s*(?:Hours|Hour|Hrs|Hr)/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = decoded.match(pattern);
-    if (match?.[1]) {
-      const value = Number(match[1]);
-      if (Number.isFinite(value) && value > 0) return value;
+  for (const content of scripts) {
+    try {
+      const parsed = JSON.parse(content);
+      collectCandidatesFromValue(parsed, source, candidates);
+    } catch {
+      // ignore broken json blocks
     }
   }
 
-  return null;
+  return candidates;
 }
 
-function stripHtmlToText(html: string): string {
-  return normalizeSpaces(
-    decodeHtml(
-      html
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-        .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
-        .replace(/<[^>]+>/g, ' '),
-    ),
-  );
-}
+function extractGameLinksFromHtml(html: string): string[] {
+  const links = new Set<string>();
+  const regex = /href=["']([^"']*\/game\/[^"']+)["']/gi;
 
-function extractHoursFromPlainText(text: string): number | null {
-  const patterns = [
-    /Main\s*Story\s*(\d+(?:\.\d+)?)\s*(?:Hours|Hour|Hrs|Hr)/i,
-    /Main\s*\+\s*Sides?\s*(\d+(?:\.\d+)?)\s*(?:Hours|Hour|Hrs|Hr)/i,
-    /Completionist\s*(\d+(?:\.\d+)?)\s*(?:Hours|Hour|Hrs|Hr)/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match?.[1]) {
-      const value = Number(match[1]);
-      if (Number.isFinite(value) && value > 0) return value;
+  let match: RegExpExecArray | null = null;
+  while ((match = regex.exec(html)) !== null) {
+    try {
+      links.add(new URL(match[1], 'https://howlongtobeat.com').toString());
+    } catch {
+      // ignore invalid urls
     }
   }
 
-  return null;
+  return [...links];
 }
 
 async function fetchHtml(url: string): Promise<string | null> {
@@ -135,64 +245,83 @@ async function fetchHtml(url: string): Promise<string | null> {
   }
 }
 
-async function resolveHltbTime(title: string): Promise<string> {
-  const searchUrls = [
-    `https://howlongtobeat.com/?q=${encodeURIComponent(title)}`,
-    `https://howlongtobeat.com/search-results?q=${encodeURIComponent(title)}`,
-  ];
+async function resolveCandidatesByHtml(title: string): Promise<Candidate[]> {
+  const candidates: Candidate[] = [];
+  const variants = buildSearchVariants(title);
 
-  for (const searchUrl of searchUrls) {
-    const searchHtml = await fetchHtml(searchUrl);
-    if (!searchHtml) continue;
+  for (const variant of variants) {
+    const searchUrls = [
+      `https://howlongtobeat.com/?q=${encodeURIComponent(variant)}`,
+      `https://howlongtobeat.com/search-results?q=${encodeURIComponent(variant)}`,
+    ];
 
-    const directHours = extractHoursByLabels(searchHtml);
-    if (directHours) {
-      return toDisplayTextFromHours(directHours) ?? '14';
-    }
+    for (const searchUrl of searchUrls) {
+      const searchHtml = await fetchHtml(searchUrl);
+      if (!searchHtml) continue;
 
-    const gameLinks = extractGameLinksFromHtml(searchHtml, title);
+      candidates.push(...extractCandidatesFromJsonScripts(searchHtml, `search:${variant}`));
 
-    for (const gameUrl of gameLinks.slice(0, 5)) {
-      const gameHtml = await fetchHtml(gameUrl);
-      if (!gameHtml) continue;
+      const gameLinks = extractGameLinksFromHtml(searchHtml)
+        .sort((a, b) => {
+          const aScore = normalizeTitle(decodeURIComponent(a)).includes(normalizeTitle(variant)) ? 1 : 0;
+          const bScore = normalizeTitle(decodeURIComponent(b)).includes(normalizeTitle(variant)) ? 1 : 0;
+          return bScore - aScore;
+        })
+        .slice(0, 5);
 
-      const labeledHours = extractHoursByLabels(gameHtml);
-      if (labeledHours) {
-        return toDisplayTextFromHours(labeledHours) ?? '14';
-      }
-
-      const plainText = stripHtmlToText(gameHtml);
-      const textHours = extractHoursFromPlainText(plainText);
-      if (textHours) {
-        return toDisplayTextFromHours(textHours) ?? '14';
+      for (const gameUrl of gameLinks) {
+        const gameHtml = await fetchHtml(gameUrl);
+        if (!gameHtml) continue;
+        candidates.push(...extractCandidatesFromJsonScripts(gameHtml, `game:${gameUrl}`));
       }
     }
   }
 
-  return '14';
+  return candidates;
+}
+
+function dedupeCandidates(candidates: Candidate[]): Candidate[] {
+  const map = new Map<string, Candidate>();
+
+  for (const candidate of candidates) {
+    const key = `${normalizeTitle(candidate.title)}|${candidate.main ?? ''}|${candidate.mainExtra ?? ''}|${candidate.completionist ?? ''}`;
+    if (!map.has(key)) map.set(key, candidate);
+  }
+
+  return [...map.values()];
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const rawTitle = Array.isArray(req.query.title) ? req.query.title[0] : req.query.title;
 
-  if (!rawTitle || typeof rawTitle !== 'string') {
+  if (!rawTitle || typeof rawTitle !== 'string' || !rawTitle.trim()) {
     return res.status(200).json({ displayText: '14' });
   }
 
   const title = rawTitle.trim();
-  if (!title) {
-    return res.status(200).json({ displayText: '14' });
-  }
 
   try {
-    const displayText = await resolveHltbTime(title);
+    const rawCandidates = await resolveCandidatesByHtml(title);
+    const candidates = dedupeCandidates(rawCandidates);
+
+    if (candidates.length === 0) {
+      return res.status(200).json({ displayText: '14' });
+    }
+
+    const best = [...candidates].sort((a, b) => scoreCandidate(b, title) - scoreCandidate(a, title))[0];
+
+    const displayText =
+      toDisplayText(best.main) ??
+      toDisplayText(best.mainExtra) ??
+      toDisplayText(best.completionist) ??
+      '14';
 
     return res.status(200).json({
-      displayText: displayText || '14',
+      displayText,
+      matchedTitle: best.title,
+      debugSource: best.source,
     });
   } catch {
-    return res.status(200).json({
-      displayText: '14',
-    });
+    return res.status(200).json({ displayText: '14' });
   }
 }
