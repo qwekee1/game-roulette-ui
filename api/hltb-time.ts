@@ -1,19 +1,34 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-type SearchResult = {
-  title?: string;
-  times?: {
-    main?: number | null;
-    mainExtra?: number | null;
-    completionist?: number | null;
-    allStyles?: number | null;
-  };
-};
+function decodeHtml(value: string): string {
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, ' ')
+    .replace(/&nbsp;/g, ' ');
+}
 
-type SearchResponse = {
-  query?: string;
-  results?: SearchResult[];
-};
+function normalizeSpaces(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function buildAbsoluteUrl(pathOrUrl: string): string {
+  try {
+    return new URL(pathOrUrl, 'https://howlongtobeat.com').toString();
+  } catch {
+    return '';
+  }
+}
+
+function toDisplayTextFromHours(hours: number | null | undefined): string | null {
+  if (hours == null || !Number.isFinite(hours) || hours <= 0) return null;
+
+  const rounded = Math.round(hours * 10) / 10;
+  if (Number.isInteger(rounded)) return `${rounded} ч`;
+  return `${rounded.toFixed(1)} ч`;
+}
 
 function normalizeTitle(value: string): string {
   return value
@@ -23,38 +38,138 @@ function normalizeTitle(value: string): string {
     .trim();
 }
 
-function scoreResult(result: SearchResult, query: string): number {
+function scoreCandidate(url: string, query: string): number {
   const normalizedQuery = normalizeTitle(query);
-  const normalizedTitle = normalizeTitle(result.title ?? '');
+  const decodedUrl = decodeURIComponent(url);
+  const normalizedUrl = normalizeTitle(decodedUrl);
 
   let score = 0;
 
-  if (!normalizedTitle) return score;
-
-  if (normalizedTitle === normalizedQuery) score += 100;
-  if (normalizedTitle.includes(normalizedQuery)) score += 40;
-  if (normalizedQuery.includes(normalizedTitle)) score += 20;
+  if (normalizedUrl.includes(normalizedQuery)) score += 100;
 
   const queryWords = normalizedQuery.split(' ').filter(Boolean);
-  const titleWords = normalizedTitle.split(' ').filter(Boolean);
-
   for (const word of queryWords) {
-    if (titleWords.includes(word)) score += 5;
+    if (normalizedUrl.includes(word)) score += 5;
   }
-
-  if (result.times?.main != null) score += 3;
-  if (result.times?.mainExtra != null) score += 2;
-  if (result.times?.completionist != null) score += 1;
 
   return score;
 }
 
-function toDisplayText(hours: number | null | undefined): string | null {
-  if (hours == null || !Number.isFinite(hours) || hours <= 0) return null;
+function extractGameLinksFromHtml(html: string, query: string): string[] {
+  const links = new Set<string>();
 
-  const rounded = Math.round(hours * 10) / 10;
-  if (Number.isInteger(rounded)) return `${rounded} ч`;
-  return `${rounded.toFixed(1)} ч`;
+  const hrefRegex = /href=["']([^"']*\/game\/[^"']+)["']/gi;
+  let match: RegExpExecArray | null = null;
+
+  while ((match = hrefRegex.exec(html)) !== null) {
+    const href = buildAbsoluteUrl(match[1]);
+    if (href) links.add(href);
+  }
+
+  return [...links].sort((a, b) => scoreCandidate(b, query) - scoreCandidate(a, query));
+}
+
+function extractHoursByLabels(html: string): number | null {
+  const decoded = decodeHtml(html);
+
+  const patterns = [
+    /Main\s*Story[\s\S]{0,200}?(\d+(?:\.\d+)?)\s*(?:Hours|Hour|Hrs|Hr)/i,
+    /Main\s*\+\s*Sides?[\s\S]{0,200}?(\d+(?:\.\d+)?)\s*(?:Hours|Hour|Hrs|Hr)/i,
+    /Completionist[\s\S]{0,200}?(\d+(?:\.\d+)?)\s*(?:Hours|Hour|Hrs|Hr)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = decoded.match(pattern);
+    if (match?.[1]) {
+      const value = Number(match[1]);
+      if (Number.isFinite(value) && value > 0) return value;
+    }
+  }
+
+  return null;
+}
+
+function stripHtmlToText(html: string): string {
+  return normalizeSpaces(
+    decodeHtml(
+      html
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+        .replace(/<[^>]+>/g, ' '),
+    ),
+  );
+}
+
+function extractHoursFromPlainText(text: string): number | null {
+  const patterns = [
+    /Main\s*Story\s*(\d+(?:\.\d+)?)\s*(?:Hours|Hour|Hrs|Hr)/i,
+    /Main\s*\+\s*Sides?\s*(\d+(?:\.\d+)?)\s*(?:Hours|Hour|Hrs|Hr)/i,
+    /Completionist\s*(\d+(?:\.\d+)?)\s*(?:Hours|Hour|Hrs|Hr)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      const value = Number(match[1]);
+      if (Number.isFinite(value) && value > 0) return value;
+    }
+  }
+
+  return null;
+}
+
+async function fetchHtml(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        accept: 'text/html,application/xhtml+xml',
+        'user-agent': 'Mozilla/5.0',
+      },
+    });
+
+    if (!response.ok) return null;
+    return await response.text();
+  } catch {
+    return null;
+  }
+}
+
+async function resolveHltbTime(title: string): Promise<string> {
+  const searchUrls = [
+    `https://howlongtobeat.com/?q=${encodeURIComponent(title)}`,
+    `https://howlongtobeat.com/search-results?q=${encodeURIComponent(title)}`,
+  ];
+
+  for (const searchUrl of searchUrls) {
+    const searchHtml = await fetchHtml(searchUrl);
+    if (!searchHtml) continue;
+
+    const directHours = extractHoursByLabels(searchHtml);
+    if (directHours) {
+      return toDisplayTextFromHours(directHours) ?? '14';
+    }
+
+    const gameLinks = extractGameLinksFromHtml(searchHtml, title);
+
+    for (const gameUrl of gameLinks.slice(0, 5)) {
+      const gameHtml = await fetchHtml(gameUrl);
+      if (!gameHtml) continue;
+
+      const labeledHours = extractHoursByLabels(gameHtml);
+      if (labeledHours) {
+        return toDisplayTextFromHours(labeledHours) ?? '14';
+      }
+
+      const plainText = stripHtmlToText(gameHtml);
+      const textHours = extractHoursFromPlainText(plainText);
+      if (textHours) {
+        return toDisplayTextFromHours(textHours) ?? '14';
+      }
+    }
+  }
+
+  return '14';
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -70,40 +185,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const upstreamUrl = `https://htlb.berkankutuk.dk/api/search?q=${encodeURIComponent(title)}`;
-
-    const upstreamResponse = await fetch(upstreamUrl, {
-      headers: {
-        accept: 'application/json',
-        'user-agent': 'Mozilla/5.0',
-      },
-    });
-
-    if (!upstreamResponse.ok) {
-      return res.status(200).json({ displayText: '14' });
-    }
-
-    const data = (await upstreamResponse.json()) as SearchResponse;
-    const results = Array.isArray(data.results) ? data.results : [];
-
-    if (results.length === 0) {
-      return res.status(200).json({ displayText: '14' });
-    }
-
-    const best = [...results].sort((a, b) => scoreResult(b, title) - scoreResult(a, title))[0];
-
-    const displayText =
-      toDisplayText(best.times?.main) ??
-      toDisplayText(best.times?.mainExtra) ??
-      toDisplayText(best.times?.completionist) ??
-      toDisplayText(best.times?.allStyles) ??
-      '14';
+    const displayText = await resolveHltbTime(title);
 
     return res.status(200).json({
-      displayText,
-      matchedTitle: best.title ?? null,
+      displayText: displayText || '14',
     });
   } catch {
-    return res.status(200).json({ displayText: '14' });
+    return res.status(200).json({
+      displayText: '14',
+    });
   }
 }
