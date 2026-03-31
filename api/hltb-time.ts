@@ -1,123 +1,109 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-type HltbItem = {
-  game_name?: string;
-  comp_main?: number;        // main story (seconds)
-  comp_plus?: number;        // main + extra
-  comp_100?: number;         // completionist
+type SearchResult = {
+  title?: string;
+  times?: {
+    main?: number | null;
+    mainExtra?: number | null;
+    completionist?: number | null;
+    allStyles?: number | null;
+  };
 };
 
-function secondsToHoursText(seconds?: number | null): string | null {
-  if (!seconds || seconds <= 0) return null;
+type SearchResponse = {
+  query?: string;
+  results?: SearchResult[];
+};
 
-  const hours = seconds / 3600;
+function normalizeTitle(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function scoreResult(result: SearchResult, query: string): number {
+  const normalizedQuery = normalizeTitle(query);
+  const normalizedTitle = normalizeTitle(result.title ?? '');
+
+  let score = 0;
+
+  if (!normalizedTitle) return score;
+
+  if (normalizedTitle === normalizedQuery) score += 100;
+  if (normalizedTitle.includes(normalizedQuery)) score += 40;
+  if (normalizedQuery.includes(normalizedTitle)) score += 20;
+
+  const queryWords = normalizedQuery.split(' ').filter(Boolean);
+  const titleWords = normalizedTitle.split(' ').filter(Boolean);
+
+  for (const word of queryWords) {
+    if (titleWords.includes(word)) score += 5;
+  }
+
+  if (result.times?.main != null) score += 3;
+  if (result.times?.mainExtra != null) score += 2;
+  if (result.times?.completionist != null) score += 1;
+
+  return score;
+}
+
+function toDisplayText(hours: number | null | undefined): string | null {
+  if (hours == null || !Number.isFinite(hours) || hours <= 0) return null;
+
   const rounded = Math.round(hours * 10) / 10;
-
   if (Number.isInteger(rounded)) return `${rounded} ч`;
   return `${rounded.toFixed(1)} ч`;
 }
 
-function normalize(str: string) {
-  return str.toLowerCase().replace(/[^\w\s]/g, '').trim();
-}
-
-function pickBest(items: HltbItem[], query: string): HltbItem | null {
-  const q = normalize(query);
-
-  let best: HltbItem | null = null;
-  let bestScore = 0;
-
-  for (const item of items) {
-    const name = normalize(item.game_name || '');
-
-    let score = 0;
-
-    if (name === q) score += 3;
-    if (name.includes(q)) score += 2;
-    if (q.includes(name)) score += 1;
-
-    if (item.comp_main) score += 0.5;
-
-    if (score > bestScore) {
-      bestScore = score;
-      best = item;
-    }
-  }
-
-  return best;
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const rawTitle = Array.isArray(req.query.title)
-    ? req.query.title[0]
-    : req.query.title;
+  const rawTitle = Array.isArray(req.query.title) ? req.query.title[0] : req.query.title;
 
   if (!rawTitle || typeof rawTitle !== 'string') {
     return res.status(200).json({ displayText: '14' });
   }
 
+  const title = rawTitle.trim();
+  if (!title) {
+    return res.status(200).json({ displayText: '14' });
+  }
+
   try {
-    const response = await fetch('https://howlongtobeat.com/api/search', {
-      method: 'POST',
+    const upstreamUrl = `https://htlb.berkankutuk.dk/api/search?q=${encodeURIComponent(title)}`;
+
+    const upstreamResponse = await fetch(upstreamUrl, {
       headers: {
-        'Content-Type': 'application/json',
-        origin: 'https://howlongtobeat.com',
-        referer: 'https://howlongtobeat.com/',
+        accept: 'application/json',
         'user-agent': 'Mozilla/5.0',
       },
-      body: JSON.stringify({
-        searchType: 'games',
-        searchTerms: rawTitle.split(' '),
-        searchPage: 1,
-        size: 20,
-        searchOptions: {
-          games: {
-            userId: 0,
-            platform: '',
-            sortCategory: 'popular',
-            rangeCategory: 'main',
-            rangeTime: {
-              min: 0,
-              max: 0,
-            },
-            gameplay: {
-              perspective: '',
-              flow: '',
-              genre: '',
-            },
-            modifier: '',
-          },
-        },
-      }),
     });
 
-    if (!response.ok) {
+    if (!upstreamResponse.ok) {
       return res.status(200).json({ displayText: '14' });
     }
 
-    const data = await response.json();
-    const items: HltbItem[] = data?.data ?? [];
+    const data = (await upstreamResponse.json()) as SearchResponse;
+    const results = Array.isArray(data.results) ? data.results : [];
 
-    if (!items.length) {
+    if (results.length === 0) {
       return res.status(200).json({ displayText: '14' });
     }
 
-    const best = pickBest(items, rawTitle);
+    const best = [...results].sort((a, b) => scoreResult(b, title) - scoreResult(a, title))[0];
 
-    if (!best) {
-      return res.status(200).json({ displayText: '14' });
-    }
-
-    const text =
-      secondsToHoursText(best.comp_main) ||
-      secondsToHoursText(best.comp_plus) ||
-      secondsToHoursText(best.comp_100) ||
+    const displayText =
+      toDisplayText(best.times?.main) ??
+      toDisplayText(best.times?.mainExtra) ??
+      toDisplayText(best.times?.completionist) ??
+      toDisplayText(best.times?.allStyles) ??
       '14';
 
     return res.status(200).json({
-      displayText: text,
+      displayText,
+      matchedTitle: best.title ?? null,
     });
-  } catch (e) {
+  } catch {
     return res.status(200).json({ displayText: '14' });
   }
 }
