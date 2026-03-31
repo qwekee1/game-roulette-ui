@@ -51,6 +51,9 @@ type GameEntry = {
 const database = rawDatabase as RawDatabase;
 const DIFFICULTIES: Difficulty[] = ['Очень легко', 'Легко', 'Нормально', 'Сложно', 'Хардкор'];
 
+const DESIGN_WIDTH = 1728;
+const DESIGN_HEIGHT = 972;
+
 const LANE_ITEM_HEIGHT = 92;
 const STEP_GAP = 10;
 const STEP_DISTANCE = LANE_ITEM_HEIGHT + STEP_GAP;
@@ -374,6 +377,7 @@ function DualRangeSlider({
 }
 
 export default function GameRouletteUI() {
+  const [viewportScale, setViewportScale] = useState(1);
   const [gamesDb] = useState<GameEntry[]>(() => getGamesDb());
   const [spinPool, setSpinPool] = useState<GameEntry[]>([]);
   const [selectedGame, setSelectedGame] = useState<GameEntry | null>(null);
@@ -425,6 +429,19 @@ export default function GameRouletteUI() {
     if (spinPool.length === 0) return [];
     return Array.from({ length: 120 }, (_, index) => spinPool[index % spinPool.length]);
   }, [spinPool]);
+
+  useEffect(() => {
+    const updateScale = () => {
+      const widthScale = window.innerWidth / DESIGN_WIDTH;
+      const heightScale = window.innerHeight / DESIGN_HEIGHT;
+      setViewportScale(Math.min(widthScale, heightScale));
+    };
+
+    updateScale();
+    window.addEventListener('resize', updateScale);
+
+    return () => window.removeEventListener('resize', updateScale);
+  }, []);
 
   useEffect(() => {
     window.localStorage.setItem(LS_SOUND_VOLUME, String(soundVolume));
@@ -710,432 +727,443 @@ export default function GameRouletteUI() {
         if (isDifficultyOpen) setIsDifficultyOpen(false);
       }}
     >
-      <div className="mx-auto flex h-full w-full max-w-[1728px] items-stretch gap-4 p-4">
-        <aside className="flex w-[320px] shrink-0 flex-col rounded-[34px] bg-[#101115] px-6 py-6 xl:w-[360px]">
-          <div className="rounded-[30px] bg-[#17191e] p-4">
-            <div className="overflow-hidden rounded-[18px] bg-gradient-to-br from-zinc-100 via-zinc-200 to-zinc-300">
-              {selectedGame?.assets?.stopgameCoverUrl ? (
-                <img
-                  src={selectedGame.assets.stopgameCoverUrl}
-                  alt={selectedGame.title}
-                  className="aspect-video w-full object-cover"
-                />
-              ) : (
-                <div className="flex aspect-video items-center justify-center bg-[radial-gradient(circle_at_70%_30%,rgba(255,190,92,0.35),transparent_28%),radial-gradient(circle_at_30%_70%,rgba(93,157,255,0.25),transparent_26%),linear-gradient(180deg,#f8f8f8,#dfe6ef)]">
-                  <div className="flex h-full w-full items-center justify-center px-6 text-center text-zinc-800">
-                    <div className="text-[14px] font-black leading-[1.15] tracking-[0.12em] xl:text-[16px]">
-                      {selectedGame?.title?.toUpperCase() ?? ''}
+      <div className="absolute left-1/2 top-1/2" style={{ transform: `translate(-50%, -50%) scale(${viewportScale})` }}>
+        <div
+          className="relative overflow-hidden bg-[#090a0d]"
+          style={{
+            width: `${DESIGN_WIDTH}px`,
+            height: `${DESIGN_HEIGHT}px`,
+            transformOrigin: 'center center',
+          }}
+        >
+          <div className="mx-auto flex h-full w-full max-w-[1728px] items-stretch gap-4 p-4">
+            <aside className="flex w-[320px] shrink-0 flex-col rounded-[34px] bg-[#101115] px-6 py-6 xl:w-[360px]">
+              <div className="rounded-[30px] bg-[#17191e] p-4">
+                <div className="overflow-hidden rounded-[18px] bg-gradient-to-br from-zinc-100 via-zinc-200 to-zinc-300">
+                  {selectedGame?.assets?.stopgameCoverUrl ? (
+                    <img
+                      src={selectedGame.assets.stopgameCoverUrl}
+                      alt={selectedGame.title}
+                      className="aspect-video w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex aspect-video items-center justify-center bg-[radial-gradient(circle_at_70%_30%,rgba(255,190,92,0.35),transparent_28%),radial-gradient(circle_at_30%_70%,rgba(93,157,255,0.25),transparent_26%),linear-gradient(180deg,#f8f8f8,#dfe6ef)]">
+                      <div className="flex h-full w-full items-center justify-center px-6 text-center text-zinc-800">
+                        <div className="text-[14px] font-black leading-[1.15] tracking-[0.12em] xl:text-[16px]">
+                          {selectedGame?.title?.toUpperCase() ?? ''}
+                        </div>
+                      </div>
                     </div>
+                  )}
+                </div>
+
+                <div className="flex h-[54px] items-center justify-center pt-4 xl:h-[64px]">
+                  <div className="w-full truncate pb-1 text-center text-[30px] font-semibold leading-[1.12] tracking-[-0.03em]">
+                    {selectedGame?.title ?? '\u00A0'}
                   </div>
                 </div>
-              )}
-            </div>
-
-            <div className="flex h-[54px] items-center justify-center pt-4 xl:h-[64px]">
-              <div className="w-full truncate pb-1 text-center text-[30px] font-semibold leading-[1.12] tracking-[-0.03em]">
-                {selectedGame?.title ?? '\u00A0'}
               </div>
-            </div>
-          </div>
 
-          <div className="mt-7 space-y-2.5 xl:space-y-3">
-            <InfoRow label="Оценка" value={getRatingText(selectedGame)} />
-            <InfoRow label="Время прохождения" value="—" />
+              <div className="mt-7 space-y-2.5 xl:space-y-3">
+                <InfoRow label="Оценка" value={getRatingText(selectedGame)} />
+                <InfoRow label="Время прохождения" value="—" />
 
-            <div className="relative">
-              <div className="flex items-center gap-2.5 xl:gap-3">
-                <Pill>Сложность</Pill>
+                <div className="relative">
+                  <div className="flex items-center gap-2.5 xl:gap-3">
+                    <Pill>Сложность</Pill>
 
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setIsDifficultyOpen((prev) => !prev);
+                      }}
+                      className="inline-flex h-[42px] min-w-0 items-center gap-2 rounded-full bg-white px-3 text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:h-[48px] xl:px-4 xl:text-[18px]"
+                    >
+                      <span className="block truncate leading-[1.15]">{difficulty}</span>
+                      <svg
+                        className={`h-4 w-4 shrink-0 transition-transform duration-200 ${isDifficultyOpen ? 'rotate-180' : ''}`}
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {isDifficultyOpen && (
+                    <div
+                      className="absolute left-[132px] top-[calc(100%+10px)] z-50 w-[220px] rounded-[24px] bg-white p-2 shadow-2xl"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div className="space-y-1">
+                        {DIFFICULTIES.map((item) => (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => {
+                              setDifficulty(item);
+                              setIsDifficultyOpen(false);
+                            }}
+                            className={`flex w-full items-center justify-between rounded-[18px] px-4 py-3 text-left text-[16px] font-medium transition xl:text-[18px] ${
+                              difficulty === item
+                                ? 'bg-zinc-100 text-black'
+                                : 'bg-white text-black hover:bg-zinc-100'
+                            }`}
+                          >
+                            <span className="truncate">{item}</span>
+                            {difficulty === item && (
+                              <svg className="ml-2 h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                                <path
+                                  fillRule="evenodd"
+                                  d="M16.704 5.29a1 1 0 0 1 .006 1.414l-8 8a1 1 0 0 1-1.42-.008l-4-4a1 1 0 0 1 1.414-1.414l3.292 3.292 7.296-7.29a1 1 0 0 1 1.412.006Z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <InfoRow label="Очки" value="—" />
+              </div>
+
+              <div className="mt-auto pt-5">
+                <div className="flex flex-wrap gap-2.5 xl:gap-3">
+                  {[
+                    { label: 'SG', href: getStopgameButtonHref(selectedGame) },
+                    { label: 'Steam', href: getSteamButtonHref(selectedGame) },
+                    { label: 'HLTB', href: getHltbButtonHref(selectedGame) },
+                  ].map((item) => (
+                    <a
+                      key={item.label}
+                      href={item.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex h-[42px] items-center justify-center rounded-full bg-white px-3 text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:h-[48px] xl:px-4 xl:text-[18px]"
+                    >
+                      <span className="block truncate leading-[1.15]">{item.label}</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            </aside>
+
+            <main className="min-w-0 flex-1 rounded-[34px] bg-[#ececec] p-3">
+              <div className="relative h-full rounded-[30px] bg-[#ececec] p-1">
+                <div className="relative h-full overflow-hidden rounded-[28px]">
+                  <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 -translate-y-1/2">
+                    <div className="relative h-[92px]">
+                      <div className="absolute left-2 top-1/2 -translate-y-1/2">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-[#ff1e68]">
+                          <path d="M9 6c0-.6.7-.9 1.2-.5l7 5c.5.3.5 1 0 1.4l-7 5c-.5.4-1.2 0-1.2-.6V6z" />
+                        </svg>
+                      </div>
+
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-[#ff1e68]">
+                          <path d="M15 6c0-.6-.7-.9-1.2-.5l-7 5c-.5.3-.5 1 0 1.4l7 5c.5.4 1.2 0 1.2-.6V6z" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    className="absolute inset-x-0 top-1/2 overflow-hidden -translate-y-1/2"
+                    style={{ height: `${VISIBLE_TRACK_HEIGHT}px` }}
+                  >
+                    <div
+                      className="flex flex-col gap-[10px]"
+                      style={{
+                        transform: `translateY(${spinTranslate}px)`,
+                        transition: spinTransition,
+                        willChange: 'transform',
+                      }}
+                    >
+                      {laneGames.map((game, index) => {
+                        const isWinnerRow = index === WINNER_ROW_INDEX;
+                        return (
+                          <div
+                            key={`${game.id}-${index}-${centerIndex}`}
+                            className={[
+                              'relative flex h-[92px] flex-none items-center justify-center rounded-[999px] bg-[#dbdbdb] px-6 text-center transition-all duration-200',
+                              isWinnerRow ? 'font-bold text-black' : 'font-semibold text-zinc-500',
+                            ].join(' ')}
+                          >
+                            <span
+                              className={[
+                                'max-w-full truncate whitespace-nowrap leading-[1.15] transition-all duration-200',
+                                isWinnerRow ? 'text-[24px] xl:text-[34px]' : 'text-[19px] xl:text-[28px]',
+                              ].join(' ')}
+                            >
+                              {game.title}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleSpin}
+                    disabled={isSpinning || filteredGamesDb.length === 0}
+                    className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full bg-black px-5 py-2.5 text-[16px] font-medium text-white transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-80 xl:px-6 xl:py-3 xl:text-[18px]"
+                  >
+                    {filteredGamesDb.length === 0 ? 'Нет игр по фильтрам' : isSpinning ? 'Крутим...' : 'Мне повезет!'}
+                  </button>
+                </div>
+              </div>
+            </main>
+
+            <aside className="flex w-[320px] shrink-0 flex-col rounded-[34px] bg-[#101115] px-6 py-6 xl:w-[360px]">
+              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                <div className="space-y-2.5 xl:space-y-3">
+                  {!hasSpun &&
+                    rightPlaceholders.map((item) => (
+                      <div
+                        key={item.id}
+                        className="w-full rounded-full bg-white py-2.5 pl-7 pr-4 text-left text-[16px] font-medium text-black xl:py-3 xl:pl-8 xl:pr-5 xl:text-[18px]"
+                      >
+                        <span className="block truncate leading-[1.15]">&nbsp;</span>
+                      </div>
+                    ))}
+
+                  {hasSpun &&
+                    rightColumnItems.map((game, index) => (
+                      <button
+                        key={`${game.id}-${index}`}
+                        type="button"
+                        onClick={() => setSelectedGame(game)}
+                        className="w-full truncate whitespace-nowrap rounded-full bg-white py-2.5 pl-7 pr-4 text-left text-[16px] font-medium text-black transition hover:translate-x-1 xl:py-3 xl:pl-8 xl:pr-5 xl:text-[18px]"
+                      >
+                        <span className="block truncate leading-[1.15]">{game.title}</span>
+                      </button>
+                    ))}
+                </div>
+              </div>
+
+              <div className="mt-5 flex justify-start xl:mt-6">
                 <button
                   type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setIsDifficultyOpen((prev) => !prev);
-                  }}
-                  className="inline-flex h-[42px] min-w-0 items-center gap-2 rounded-full bg-white px-3 text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:h-[48px] xl:px-4 xl:text-[18px]"
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="inline-flex whitespace-nowrap rounded-full bg-white px-3 py-2.5 text-left text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:px-4 xl:py-3 xl:text-[18px]"
                 >
-                  <span className="block truncate leading-[1.15]">{difficulty}</span>
-                  <svg
-                    className={`h-4 w-4 shrink-0 transition-transform duration-200 ${isDifficultyOpen ? 'rotate-180' : ''}`}
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
+                  <span className="block truncate leading-[1.15]">Настройки</span>
+                </button>
+              </div>
+            </aside>
+          </div>
+
+          <div
+            className={[
+              'absolute inset-0 z-50 flex items-center justify-center p-6 backdrop-blur-sm transition-all duration-300 ease-out',
+              isSettingsOpen ? 'pointer-events-auto bg-black/45 opacity-100' : 'pointer-events-none bg-black/0 opacity-0',
+            ].join(' ')}
+          >
+            <div
+              className={[
+                'w-full max-w-[560px] rounded-[32px] bg-[#17191e] p-6 shadow-2xl transition-all duration-300 ease-out xl:p-7',
+                isSettingsOpen ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-4 scale-95 opacity-0',
+              ].join(' ')}
+            >
+              <div className="mb-5 flex items-center justify-between">
+                <div>
+                  <h2 className="text-[26px] font-semibold leading-[1.12] text-white xl:text-[30px]">Настройки</h2>
+                  <p className="mt-1 text-sm leading-[1.2] text-zinc-400">
+                    Звук и фильтры рулетки.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsOpen(false)}
+                  className="inline-flex h-11 w-11 aspect-square items-center justify-center rounded-full bg-white text-xl leading-none text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98]"
+                >
+                  ×
                 </button>
               </div>
 
-              {isDifficultyOpen && (
-                <div
-                  className="absolute left-[132px] top-[calc(100%+10px)] z-50 w-[220px] rounded-[24px] bg-white p-2 shadow-2xl"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <div className="space-y-1">
-                    {DIFFICULTIES.map((item) => (
-                      <button
-                        key={item}
-                        type="button"
-                        onClick={() => {
-                          setDifficulty(item);
-                          setIsDifficultyOpen(false);
-                        }}
-                        className={`flex w-full items-center justify-between rounded-[18px] px-4 py-3 text-left text-[16px] font-medium transition xl:text-[18px] ${
-                          difficulty === item
-                            ? 'bg-zinc-100 text-black'
-                            : 'bg-white text-black hover:bg-zinc-100'
-                        }`}
-                      >
-                        <span className="truncate">{item}</span>
-                        {difficulty === item && (
-                          <svg className="ml-2 h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-                            <path
-                              fillRule="evenodd"
-                              d="M16.704 5.29a1 1 0 0 1 .006 1.414l-8 8a1 1 0 0 1-1.42-.008l-4-4a1 1 0 0 1 1.414-1.414l3.292 3.292 7.296-7.29a1 1 0 0 1 1.412.006Z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <InfoRow label="Очки" value="—" />
-          </div>
-
-          <div className="mt-auto pt-5">
-            <div className="flex flex-wrap gap-2.5 xl:gap-3">
-              {[
-                { label: 'SG', href: getStopgameButtonHref(selectedGame) },
-                { label: 'Steam', href: getSteamButtonHref(selectedGame) },
-                { label: 'HLTB', href: getHltbButtonHref(selectedGame) },
-              ].map((item) => (
-                <a
-                  key={item.label}
-                  href={item.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex h-[42px] items-center justify-center rounded-full bg-white px-3 text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:h-[48px] xl:px-4 xl:text-[18px]"
-                >
-                  <span className="block truncate leading-[1.15]">{item.label}</span>
-                </a>
-              ))}
-            </div>
-          </div>
-        </aside>
-
-        <main className="min-w-0 flex-1 rounded-[34px] bg-[#ececec] p-3">
-          <div className="relative h-full rounded-[30px] bg-[#ececec] p-1">
-            <div className="relative h-full overflow-hidden rounded-[28px]">
-              <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 -translate-y-1/2">
-                <div className="relative h-[92px]">
-                  <div className="absolute left-2 top-1/2 -translate-y-1/2">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-[#ff1e68]">
-                      <path d="M9 6c0-.6.7-.9 1.2-.5l7 5c.5.3.5 1 0 1.4l-7 5c-.5.4-1.2 0-1.2-.6V6z" />
-                    </svg>
+              <div className="space-y-5">
+                <div className="rounded-[26px] bg-[#101115] p-4 xl:p-5">
+                  <div className="mb-4 text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">
+                    Настройки звука
                   </div>
 
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-[#ff1e68]">
-                      <path d="M15 6c0-.6-.7-.9-1.2-.5l-7 5c-.5.3-.5 1 0 1.4l7 5c.5.4 1.2 0 1.2-.6V6z" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-
-              <div
-                className="absolute inset-x-0 top-1/2 overflow-hidden -translate-y-1/2"
-                style={{ height: `${VISIBLE_TRACK_HEIGHT}px` }}
-              >
-                <div
-                  className="flex flex-col gap-[10px]"
-                  style={{
-                    transform: `translateY(${spinTranslate}px)`,
-                    transition: spinTransition,
-                    willChange: 'transform',
-                  }}
-                >
-                  {laneGames.map((game, index) => {
-                    const isWinnerRow = index === WINNER_ROW_INDEX;
-                    return (
-                      <div
-                        key={`${game.id}-${index}-${centerIndex}`}
-                        className={[
-                          'relative flex h-[92px] flex-none items-center justify-center rounded-[999px] bg-[#dbdbdb] px-6 text-center transition-all duration-200',
-                          isWinnerRow ? 'font-bold text-black' : 'font-semibold text-zinc-500',
-                        ].join(' ')}
-                      >
-                        <span
-                          className={[
-                            'max-w-full truncate whitespace-nowrap leading-[1.15] transition-all duration-200',
-                            isWinnerRow ? 'text-[24px] xl:text-[34px]' : 'text-[19px] xl:text-[28px]',
-                          ].join(' ')}
-                        >
-                          {game.title}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleSpin}
-                disabled={isSpinning || filteredGamesDb.length === 0}
-                className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full bg-black px-5 py-2.5 text-[16px] font-medium text-white transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-80 xl:px-6 xl:py-3 xl:text-[18px]"
-              >
-                {filteredGamesDb.length === 0 ? 'Нет игр по фильтрам' : isSpinning ? 'Крутим...' : 'Мне повезет!'}
-              </button>
-            </div>
-          </div>
-        </main>
-
-        <aside className="flex w-[320px] shrink-0 flex-col rounded-[34px] bg-[#101115] px-6 py-6 xl:w-[360px]">
-          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-            <div className="space-y-2.5 xl:space-y-3">
-              {!hasSpun &&
-                rightPlaceholders.map((item) => (
-                  <div
-                    key={item.id}
-                    className="w-full rounded-full bg-white py-2.5 pl-7 pr-4 text-left text-[16px] font-medium text-black xl:py-3 xl:pl-8 xl:pr-5 xl:text-[18px]"
-                  >
-                    <span className="block truncate leading-[1.15]">&nbsp;</span>
-                  </div>
-                ))}
-
-              {hasSpun &&
-                rightColumnItems.map((game, index) => (
-                  <button
-                    key={`${game.id}-${index}`}
-                    type="button"
-                    onClick={() => setSelectedGame(game)}
-                    className="w-full truncate whitespace-nowrap rounded-full bg-white py-2.5 pl-7 pr-4 text-left text-[16px] font-medium text-black transition hover:translate-x-1 xl:py-3 xl:pl-8 xl:pr-5 xl:text-[18px]"
-                  >
-                    <span className="block truncate leading-[1.15]">{game.title}</span>
-                  </button>
-                ))}
-            </div>
-          </div>
-
-          <div className="mt-5 flex justify-start xl:mt-6">
-            <button
-              type="button"
-              onClick={() => setIsSettingsOpen(true)}
-              className="inline-flex whitespace-nowrap rounded-full bg-white px-3 py-2.5 text-left text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:px-4 xl:py-3 xl:text-[18px]"
-            >
-              <span className="block truncate leading-[1.15]">Настройки</span>
-            </button>
-          </div>
-        </aside>
-      </div>
-
-      <div
-        className={[
-          'absolute inset-0 z-50 flex items-center justify-center p-6 backdrop-blur-sm transition-all duration-300 ease-out',
-          isSettingsOpen ? 'pointer-events-auto bg-black/45 opacity-100' : 'pointer-events-none bg-black/0 opacity-0',
-        ].join(' ')}
-      >
-        <div
-          className={[
-            'w-full max-w-[560px] rounded-[32px] bg-[#17191e] p-6 shadow-2xl transition-all duration-300 ease-out xl:p-7',
-            isSettingsOpen ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-4 scale-95 opacity-0',
-          ].join(' ')}
-        >
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <h2 className="text-[26px] font-semibold leading-[1.12] text-white xl:text-[30px]">Настройки</h2>
-              <p className="mt-1 text-sm leading-[1.2] text-zinc-400">
-                Звук и фильтры рулетки.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsSettingsOpen(false)}
-              className="inline-flex h-11 w-11 aspect-square items-center justify-center rounded-full bg-white text-xl leading-none text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98]"
-            >
-              ×
-            </button>
-          </div>
-
-          <div className="space-y-5">
-            <div className="rounded-[26px] bg-[#101115] p-4 xl:p-5">
-              <div className="mb-4 text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">
-                Настройки звука
-              </div>
-
-              <div>
-                <div className="mb-4 flex items-center justify-between gap-4">
                   <div>
-                    <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Громкость</div>
-                  </div>
-                  <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
-                    {soundVolume}%
+                    <div className="mb-4 flex items-center justify-between gap-4">
+                      <div>
+                        <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Громкость</div>
+                      </div>
+                      <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
+                        {soundVolume}%
+                      </div>
+                    </div>
+
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={soundVolume}
+                      onChange={(event) => setSoundVolume(Number(event.target.value))}
+                      className="single-slider h-3 w-full cursor-pointer appearance-none rounded-full"
+                      style={{
+                        background: `linear-gradient(to right, #22c55e ${soundVolume}%, #52525b ${soundVolume}%)`,
+                      }}
+                    />
                   </div>
                 </div>
 
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={soundVolume}
-                  onChange={(event) => setSoundVolume(Number(event.target.value))}
-                  className="single-slider h-3 w-full cursor-pointer appearance-none rounded-full"
-                  style={{
-                    background: `linear-gradient(to right, #22c55e ${soundVolume}%, #52525b ${soundVolume}%)`,
-                  }}
-                />
-              </div>
-            </div>
+                <div className="rounded-[26px] bg-[#101115] p-4 xl:p-5">
+                  <div className="mb-4 text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">
+                    Настройки рулетки
+                  </div>
 
-            <div className="rounded-[26px] bg-[#101115] p-4 xl:p-5">
-              <div className="mb-4 text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">
-                Настройки рулетки
-              </div>
-
-              <div className="space-y-6">
-                <div>
-                  <div className="mb-4 flex items-center justify-between gap-4">
+                  <div className="space-y-6">
                     <div>
-                      <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Рейтинг</div>
-                    </div>
-                    <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
-                      {ratingMin.toFixed(1)}–{ratingMax.toFixed(1)}
-                    </div>
-                  </div>
+                      <div className="mb-4 flex items-center justify-between gap-4">
+                        <div>
+                          <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Рейтинг</div>
+                        </div>
+                        <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
+                          {ratingMin.toFixed(1)}–{ratingMax.toFixed(1)}
+                        </div>
+                      </div>
 
-                  <DualRangeSlider
-                    min={MIN_RATING}
-                    max={MAX_RATING}
-                    step={0.1}
-                    minValue={ratingMin}
-                    maxValue={ratingMax}
-                    onMinChange={(value) => setRatingMin(Math.min(value, ratingMax))}
-                    onMaxChange={(value) => setRatingMax(Math.max(value, ratingMin))}
-                  />
-                </div>
+                      <DualRangeSlider
+                        min={MIN_RATING}
+                        max={MAX_RATING}
+                        step={0.1}
+                        minValue={ratingMin}
+                        maxValue={ratingMax}
+                        onMinChange={(value) => setRatingMin(Math.min(value, ratingMax))}
+                        onMaxChange={(value) => setRatingMax(Math.max(value, ratingMin))}
+                      />
+                    </div>
 
-                <div>
-                  <div className="mb-4 flex items-center justify-between gap-4">
                     <div>
-                      <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Период</div>
-                    </div>
-                    <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
-                      {getPeriodDisplay(periodMinIndex, periodMaxIndex)}
-                    </div>
-                  </div>
+                      <div className="mb-4 flex items-center justify-between gap-4">
+                        <div>
+                          <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Период</div>
+                        </div>
+                        <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
+                          {getPeriodDisplay(periodMinIndex, periodMaxIndex)}
+                        </div>
+                      </div>
 
-                  <DualRangeSlider
-                    min={0}
-                    max={PERIOD_BUCKETS.length - 1}
-                    step={1}
-                    minValue={periodMinIndex}
-                    maxValue={periodMaxIndex}
-                    onMinChange={(value) => setPeriodMinIndex(Math.min(value, periodMaxIndex))}
-                    onMaxChange={(value) => setPeriodMaxIndex(Math.max(value, periodMinIndex))}
-                  />
-                </div>
+                      <DualRangeSlider
+                        min={0}
+                        max={PERIOD_BUCKETS.length - 1}
+                        step={1}
+                        minValue={periodMinIndex}
+                        maxValue={periodMaxIndex}
+                        onMinChange={(value) => setPeriodMinIndex(Math.min(value, periodMaxIndex))}
+                        onMaxChange={(value) => setPeriodMaxIndex(Math.max(value, periodMinIndex))}
+                      />
+                    </div>
 
-                <div>
-                  <div className="mb-4 flex items-center justify-between gap-4">
                     <div>
-                      <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Игр в раунде</div>
+                      <div className="mb-4 flex items-center justify-between gap-4">
+                        <div>
+                          <div className="text-[18px] font-medium leading-[1.15] text-white xl:text-[20px]">Игр в раунде</div>
+                        </div>
+                        <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
+                          {roundSize}
+                        </div>
+                      </div>
+
+                      <input
+                        type="range"
+                        min={MIN_ROUND_SIZE}
+                        max={MAX_ROUND_SIZE}
+                        step={1}
+                        value={roundSize}
+                        onChange={(event) => setRoundSize(Number(event.target.value))}
+                        className="single-slider h-3 w-full cursor-pointer appearance-none rounded-full"
+                        style={{
+                          background: `linear-gradient(to right, #22c55e ${((roundSize - MIN_ROUND_SIZE) / (MAX_ROUND_SIZE - MIN_ROUND_SIZE)) * 100}%, #52525b ${((roundSize - MIN_ROUND_SIZE) / (MAX_ROUND_SIZE - MIN_ROUND_SIZE)) * 100}%)`,
+                        }}
+                      />
                     </div>
-                    <div className="rounded-full bg-white px-4 py-2 text-[16px] font-medium leading-[1.1] text-black xl:text-[18px]">
-                      {roundSize}
+
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 rounded-full bg-white px-4 py-3 text-[16px] font-medium text-black xl:text-[18px]">
+                        Игр в списке: {filteredGamesDb.length}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={resetRouletteSettings}
+                        className="inline-flex shrink-0 rounded-full bg-white px-5 py-3 text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:text-[18px]"
+                      >
+                        Сброс
+                      </button>
                     </div>
                   </div>
-
-                  <input
-                    type="range"
-                    min={MIN_ROUND_SIZE}
-                    max={MAX_ROUND_SIZE}
-                    step={1}
-                    value={roundSize}
-                    onChange={(event) => setRoundSize(Number(event.target.value))}
-                    className="single-slider h-3 w-full cursor-pointer appearance-none rounded-full"
-                    style={{
-                      background: `linear-gradient(to right, #22c55e ${((roundSize - MIN_ROUND_SIZE) / (MAX_ROUND_SIZE - MIN_ROUND_SIZE)) * 100}%, #52525b ${((roundSize - MIN_ROUND_SIZE) / (MAX_ROUND_SIZE - MIN_ROUND_SIZE)) * 100}%)`,
-                    }}
-                  />
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 rounded-full bg-white px-4 py-3 text-[16px] font-medium text-black xl:text-[18px]">
-                    Игр в списке: {filteredGamesDb.length}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={resetRouletteSettings}
-                    className="inline-flex shrink-0 rounded-full bg-white px-5 py-3 text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:text-[18px]"
-                  >
-                    Сброс
-                  </button>
                 </div>
               </div>
+
+              <style>{`
+                .single-slider::-webkit-slider-thumb {
+                  appearance: none;
+                  width: 20px;
+                  height: 20px;
+                  border-radius: 999px;
+                  background: #ffffff;
+                  cursor: pointer;
+                  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                  border: none;
+                  transition: transform 0.15s ease;
+                }
+
+                .single-slider::-webkit-slider-thumb:hover {
+                  transform: scale(1.1);
+                }
+
+                .single-slider::-moz-range-thumb {
+                  width: 20px;
+                  height: 20px;
+                  border-radius: 999px;
+                  background: #ffffff;
+                  cursor: pointer;
+                  border: none;
+                  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                }
+
+                .range-thumb::-webkit-slider-thumb {
+                  appearance: none;
+                  pointer-events: auto;
+                  width: 20px;
+                  height: 20px;
+                  border-radius: 999px;
+                  background: transparent;
+                  cursor: pointer;
+                  border: none;
+                  box-shadow: none;
+                  opacity: 0;
+                }
+
+                .range-thumb::-moz-range-thumb {
+                  pointer-events: auto;
+                  width: 20px;
+                  height: 20px;
+                  border-radius: 999px;
+                  background: transparent;
+                  cursor: pointer;
+                  border: none;
+                  box-shadow: none;
+                  opacity: 0;
+                }
+              `}</style>
             </div>
           </div>
-
-          <style>{`
-            .single-slider::-webkit-slider-thumb {
-              appearance: none;
-              width: 20px;
-              height: 20px;
-              border-radius: 999px;
-              background: #ffffff;
-              cursor: pointer;
-              box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-              border: none;
-              transition: transform 0.15s ease;
-            }
-
-            .single-slider::-webkit-slider-thumb:hover {
-              transform: scale(1.1);
-            }
-
-            .single-slider::-moz-range-thumb {
-              width: 20px;
-              height: 20px;
-              border-radius: 999px;
-              background: #ffffff;
-              cursor: pointer;
-              border: none;
-              box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-            }
-
-            .range-thumb::-webkit-slider-thumb {
-              appearance: none;
-              pointer-events: auto;
-              width: 20px;
-              height: 20px;
-              border-radius: 999px;
-              background: transparent;
-              cursor: pointer;
-              border: none;
-              box-shadow: none;
-              opacity: 0;
-            }
-
-            .range-thumb::-moz-range-thumb {
-              pointer-events: auto;
-              width: 20px;
-              height: 20px;
-              border-radius: 999px;
-              background: transparent;
-              cursor: pointer;
-              border: none;
-              box-shadow: none;
-              opacity: 0;
-            }
-          `}</style>
         </div>
       </div>
     </div>
