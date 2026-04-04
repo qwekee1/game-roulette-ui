@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import rawDatabase from './data/games_roulette_database_merged.json';
+import rawDatabase from './data/games_roulette_database_hltb_final.json';
 
 type Difficulty = 'Очень легко' | 'Легко' | 'Нормально' | 'Сложно' | 'Хардкор';
 type ActiveThumb = 'min' | 'max';
@@ -13,6 +13,8 @@ type RawGameEntry = {
   name: string;
   url_stopgame: string;
   rating?: number | null;
+  rating_hltb?: number | null;
+  hours?: number | null;
   weight?: number | null;
   year_range?: string | null;
 };
@@ -28,6 +30,8 @@ type GameEntry = {
   stopgameUrl: string;
   stopgameSlug?: string;
   ratingValue: number | null;
+  ratingHltbValue: number | null;
+  hoursValue: number | null;
   yearRangeRaw: string | null;
   yearStart: number | null;
   yearEnd: number | null;
@@ -50,6 +54,14 @@ type GameEntry = {
 
 const database = rawDatabase as RawDatabase;
 const DIFFICULTIES: Difficulty[] = ['Очень легко', 'Легко', 'Нормально', 'Сложно', 'Хардкор'];
+
+const DIFFICULTY_MULTIPLIER: Record<Difficulty, number> = {
+  'Очень легко': 0.5,
+  Легко: 0.75,
+  Нормально: 1,
+  Сложно: 1.25,
+  Хардкор: 1.5,
+};
 
 const DESIGN_WIDTH = 1728;
 const DESIGN_HEIGHT = 972;
@@ -127,7 +139,9 @@ function toGameEntry(raw: RawGameEntry): GameEntry {
     title: raw.name,
     stopgameUrl: raw.url_stopgame,
     stopgameSlug: raw.url_stopgame.split('/').filter(Boolean).pop(),
-    ratingValue: typeof raw.rating === 'number' ? raw.rating : null,
+    ratingValue: typeof raw.rating === 'number' ? raw.rating : 0,
+    ratingHltbValue: typeof raw.rating_hltb === 'number' ? raw.rating_hltb : 0,
+    hoursValue: typeof raw.hours === 'number' ? raw.hours : 0,
     yearRangeRaw: raw.year_range ?? null,
     yearStart: parsedYears.start,
     yearEnd: parsedYears.end,
@@ -204,6 +218,27 @@ function buildSpinSequence(source: GameEntry[], centerIndex: number, totalSteps:
 function getRatingText(game: GameEntry | null): string {
   if (!game) return '—';
   return game.rating?.text ?? game.rating?.value?.toFixed(1) ?? '—';
+}
+
+function getHoursText(game: GameEntry | null): string {
+  if (!game) return '—';
+  const hours = game.hoursValue ?? 0;
+  if (!Number.isFinite(hours) || hours <= 0) return '—';
+  return Number.isInteger(hours) ? `${hours} ч` : `${hours.toFixed(1)} ч`;
+}
+
+function getPointsText(game: GameEntry | null, difficulty: Difficulty): string {
+  if (!game) return '—';
+
+  const baseScore =
+    (game.ratingValue ?? 0) +
+    (game.ratingHltbValue ?? 0) +
+    (game.hoursValue ?? 0);
+
+  const total = baseScore * DIFFICULTY_MULTIPLIER[difficulty];
+  const rounded = Math.round(total * 100) / 100;
+
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/\.?0+$/, '');
 }
 
 function getStopgameButtonHref(game: GameEntry | null): string {
@@ -766,7 +801,7 @@ export default function GameRouletteUI() {
 
               <div className="mt-7 space-y-2.5 xl:space-y-3">
                 <InfoRow label="Оценка" value={getRatingText(selectedGame)} />
-                <InfoRow label="Время прохождения" value="—" />
+                <InfoRow label="Время прохождения" value={getHoursText(selectedGame)} />
 
                 <div className="relative">
                   <div className="flex items-center gap-2.5 xl:gap-3">
@@ -832,7 +867,7 @@ export default function GameRouletteUI() {
                   )}
                 </div>
 
-                <InfoRow label="Очки" value="—" />
+                <InfoRow label="Очки" value={getPointsText(selectedGame, difficulty)} />
               </div>
 
               <div className="mt-auto pt-5">
