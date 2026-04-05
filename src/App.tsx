@@ -12,9 +12,9 @@ type RawGameEntry = {
   id: number | string;
   name: string;
   url_stopgame: string;
-  rating?: number | null;
-  rating_hltb?: number | null;
-  hours?: number | null;
+  rating?: number | string | null;
+  rating_hltb?: number | string | null;
+  hours?: number | string | null;
   weight?: number | null;
   year_range?: string | null;
 };
@@ -105,6 +105,26 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function parseNumericValue(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value
+      .trim()
+      .replace(',', '.')
+      .replace(/[^\d.-]/g, '');
+
+    if (!normalized) return null;
+
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
 function parseYearRange(yearRange?: string | null): { start: number | null; end: number | null } {
   if (!yearRange) return { start: null, end: null };
 
@@ -133,22 +153,25 @@ function parseYearRange(yearRange?: string | null): { start: number | null; end:
 
 function toGameEntry(raw: RawGameEntry): GameEntry {
   const parsedYears = parseYearRange(raw.year_range);
+  const ratingValue = parseNumericValue(raw.rating) ?? 0;
+  const ratingHltbValue = parseNumericValue(raw.rating_hltb) ?? 0;
+  const hoursValue = parseNumericValue(raw.hours) ?? 0;
 
   return {
     id: String(raw.id),
     title: raw.name,
     stopgameUrl: raw.url_stopgame,
     stopgameSlug: raw.url_stopgame.split('/').filter(Boolean).pop(),
-    ratingValue: typeof raw.rating === 'number' ? raw.rating : 0,
-    ratingHltbValue: typeof raw.rating_hltb === 'number' ? raw.rating_hltb : 0,
-    hoursValue: typeof raw.hours === 'number' ? raw.hours : 0,
+    ratingValue,
+    ratingHltbValue,
+    hoursValue,
     yearRangeRaw: raw.year_range ?? null,
     yearStart: parsedYears.start,
     yearEnd: parsedYears.end,
     rating: {
-      value: raw.rating ?? null,
-      text: typeof raw.rating === 'number' ? raw.rating.toFixed(1) : null,
-      allObservedValues: typeof raw.rating === 'number' ? [raw.rating.toFixed(1)] : [],
+      value: ratingValue,
+      text: Number.isFinite(ratingValue) ? ratingValue.toFixed(1) : null,
+      allObservedValues: Number.isFinite(ratingValue) ? [ratingValue.toFixed(1)] : [],
     },
     period: {
       label: raw.year_range ?? '—',
@@ -222,9 +245,12 @@ function getRatingText(game: GameEntry | null): string {
 
 function getHoursText(game: GameEntry | null): string {
   if (!game) return '—';
+
   const hours = game.hoursValue ?? 0;
   if (!Number.isFinite(hours) || hours <= 0) return '—';
-  return Number.isInteger(hours) ? `${hours} ч` : `${hours.toFixed(1)} ч`;
+
+  const rounded = Math.round(hours * 10) / 10;
+  return Number.isInteger(rounded) ? `${rounded} ч` : `${rounded.toFixed(1)} ч`;
 }
 
 function getPointsText(game: GameEntry | null, difficulty: Difficulty): string {
