@@ -101,6 +101,8 @@ const LS_ROUND_SIZE = 'rouletteRoundSize';
 
 const THUMB_SIZE_PX = 20;
 
+const coverUrlCache = new Map<string, string | null>();
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -322,16 +324,114 @@ function getPeriodDisplay(periodMinIndex: number, periodMaxIndex: number): strin
   return `${PERIOD_BUCKETS[periodMinIndex].start}–${PERIOD_BUCKETS[periodMaxIndex].end}`;
 }
 
-async function fetchStopgameCover(stopgameUrl: string): Promise<string | null> {
-  if (!stopgameUrl) return null;
+function normalizeCoverUrl(candidate: unknown, stopgameUrl: string): string | null {
+  if (typeof candidate !== 'string') return null;
+
+  const trimmed = candidate.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith('data:image/')) return trimmed;
 
   try {
-    const response = await fetch(`/api/stopgame-cover?url=${encodeURIComponent(stopgameUrl)}`);
-    if (!response.ok) return null;
+    if (trimmed.startsWith('//')) {
+      return `https:${trimmed}`;
+    }
 
-    const data = (await response.json()) as { imageUrl?: string | null };
-    return data.imageUrl ?? null;
+    if (trimmed.startsWith('/')) {
+      const stopgameOrigin = new URL(stopgameUrl).origin;
+      return new URL(trimmed, stopgameOrigin).toString();
+    }
+
+    return new URL(trimmed).toString();
   } catch {
+    try {
+      return new URL(trimmed, stopgameUrl).toString();
+    } catch {
+      return null;
+    }
+  }
+}
+
+function extractCoverUrlFromPayload(payload: unknown, stopgameUrl: string): string | null {
+  if (!payload || typeof payload !== 'object') return null;
+
+  const record = payload as Record<string, unknown>;
+
+  const directCandidates = [
+    record.imageUrl,
+    record.image_url,
+    record.coverUrl,
+    record.cover_url,
+    record.posterUrl,
+    record.poster_url,
+    record.url,
+    record.src,
+  ];
+
+  for (const candidate of directCandidates) {
+    const normalized = normalizeCoverUrl(candidate, stopgameUrl);
+    if (normalized) return normalized;
+  }
+
+  const nestedCandidates = [
+    record.data,
+    record.result,
+    record.payload,
+    record.cover,
+    record.poster,
+    record.image,
+  ];
+
+  for (const nested of nestedCandidates) {
+    const nestedResult = extractCoverUrlFromPayload(nested, stopgameUrl);
+    if (nestedResult) return nestedResult;
+  }
+
+  return null;
+}
+
+async function fetchStopgameCover(stopgameUrl: string): Promise<string | null> {
+  const normalizedStopgameUrl = stopgameUrl.trim();
+  if (!normalizedStopgameUrl) return null;
+
+  if (coverUrlCache.has(normalizedStopgameUrl)) {
+    return coverUrlCache.get(normalizedStopgameUrl) ?? null;
+  }
+
+  try {
+    const response = await fetch(`/api/stopgame-cover?url=${encodeURIComponent(normalizedStopgameUrl)}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json, text/plain, */*',
+      },
+    });
+
+    if (!response.ok) {
+      coverUrlCache.set(normalizedStopgameUrl, null);
+      return null;
+    }
+
+    const contentType = response.headers.get('content-type') ?? '';
+
+    let finalUrl: string | null = null;
+
+    if (contentType.includes('application/json')) {
+      const data = (await response.json()) as unknown;
+      finalUrl = extractCoverUrlFromPayload(data, normalizedStopgameUrl);
+    } else {
+      const text = await response.text();
+      try {
+        const parsed = JSON.parse(text) as unknown;
+        finalUrl = extractCoverUrlFromPayload(parsed, normalizedStopgameUrl);
+      } catch {
+        finalUrl = normalizeCoverUrl(text, normalizedStopgameUrl);
+      }
+    }
+
+    coverUrlCache.set(normalizedStopgameUrl, finalUrl);
+    return finalUrl;
+  } catch {
+    coverUrlCache.set(normalizedStopgameUrl, null);
     return null;
   }
 }
@@ -712,13 +812,18 @@ export default function GameRouletteUI() {
     if (finalizeTimeoutRef.current !== null) window.clearTimeout(finalizeTimeoutRef.current);
     clearTickTimeouts();
 
-    const newRoundGames = getRandomGames(filteredGamesDb, roundSize).map((game) => ({
-      ...game,
-      assets: {
-        ...game.assets,
-        stopgameCoverFetched: false,
-      },
-    }));
+    const newRoundGames = getRandomGames(filteredGamesDb, roundSize).map((game) => {
+      const cachedCover = coverUrlCache.get(game.stopgameUrl.trim());
+
+      return {
+        ...game,
+        assets: {
+          ...game.assets,
+          stopgameCoverUrl: cachedCover ?? game.assets?.stopgameCoverUrl ?? null,
+          stopgameCoverFetched: typeof cachedCover !== 'undefined',
+        },
+      };
+    });
 
     if (newRoundGames.length === 0) return;
 
@@ -806,6 +911,38 @@ export default function GameRouletteUI() {
                       src={selectedGame.assets.stopgameCoverUrl}
                       alt={selectedGame.title}
                       className="block aspect-square w-full object-cover"
+                      loading="eager"
+                      referrerPolicy="no-referrer"
+                      onError={() => {
+                        coverUrlCache.set(selectedGame.stopgameUrl.trim(), null);
+
+                        setSelectedGame((prev) => {
+                          if (!prev || prev.id !== selectedGame.id) return prev;
+                          return {
+                            ...prev,
+                            assets: {
+                              ...prev.assets,
+                              stopgameCoverUrl: null,
+                              stopgameCoverFetched: true,
+                            },
+                          };
+                        });
+
+                        setSpinPool((prev) =>
+                          prev.map((game) =>
+                            game.id === selectedGame.id
+                              ? {
+                                  ...game,
+                                  assets: {
+                                    ...game.assets,
+                                    stopgameCoverUrl: null,
+                                    stopgameCoverFetched: true,
+                                  },
+                                }
+                              : game,
+                          ),
+                        );
+                      }}
                     />
                   ) : (
                     <div className="flex aspect-square items-center justify-center bg-[radial-gradient(circle_at_70%_30%,rgba(255,190,92,0.35),transparent_28%),radial-gradient(circle_at_30%_70%,rgba(93,157,255,0.25),transparent_26%),linear-gradient(180deg,#f8f8f8,#dfe6ef)]">
