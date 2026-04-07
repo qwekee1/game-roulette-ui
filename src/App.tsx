@@ -102,7 +102,6 @@ const LS_ROUND_SIZE = 'rouletteRoundSize';
 const THUMB_SIZE_PX = 20;
 
 const coverUrlCache = new Map<string, string | null>();
-const coverPromiseCache = new Map<string, Promise<string | null>>();
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -399,53 +398,42 @@ async function fetchStopgameCover(stopgameUrl: string): Promise<string | null> {
     return coverUrlCache.get(normalizedStopgameUrl) ?? null;
   }
 
-  if (coverPromiseCache.has(normalizedStopgameUrl)) {
-    return coverPromiseCache.get(normalizedStopgameUrl) ?? null;
-  }
+  try {
+    const response = await fetch(`/api/stopgame-cover?url=${encodeURIComponent(normalizedStopgameUrl)}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json, text/plain, */*',
+      },
+    });
 
-  const requestPromise = (async () => {
-    try {
-      const response = await fetch(`/api/stopgame-cover?url=${encodeURIComponent(normalizedStopgameUrl)}`, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json, text/plain, */*',
-        },
-      });
-
-      if (!response.ok) {
-        coverUrlCache.set(normalizedStopgameUrl, null);
-        return null;
-      }
-
-      const contentType = response.headers.get('content-type') ?? '';
-      let finalUrl: string | null = null;
-
-      if (contentType.includes('application/json')) {
-        const data = (await response.json()) as unknown;
-        finalUrl = extractCoverUrlFromPayload(data, normalizedStopgameUrl);
-      } else {
-        const text = await response.text();
-
-        try {
-          const parsed = JSON.parse(text) as unknown;
-          finalUrl = extractCoverUrlFromPayload(parsed, normalizedStopgameUrl);
-        } catch {
-          finalUrl = normalizeCoverUrl(text, normalizedStopgameUrl);
-        }
-      }
-
-      coverUrlCache.set(normalizedStopgameUrl, finalUrl);
-      return finalUrl;
-    } catch {
+    if (!response.ok) {
       coverUrlCache.set(normalizedStopgameUrl, null);
       return null;
-    } finally {
-      coverPromiseCache.delete(normalizedStopgameUrl);
     }
-  })();
 
-  coverPromiseCache.set(normalizedStopgameUrl, requestPromise);
-  return requestPromise;
+    const contentType = response.headers.get('content-type') ?? '';
+
+    let finalUrl: string | null = null;
+
+    if (contentType.includes('application/json')) {
+      const data = (await response.json()) as unknown;
+      finalUrl = extractCoverUrlFromPayload(data, normalizedStopgameUrl);
+    } else {
+      const text = await response.text();
+      try {
+        const parsed = JSON.parse(text) as unknown;
+        finalUrl = extractCoverUrlFromPayload(parsed, normalizedStopgameUrl);
+      } catch {
+        finalUrl = normalizeCoverUrl(text, normalizedStopgameUrl);
+      }
+    }
+
+    coverUrlCache.set(normalizedStopgameUrl, finalUrl);
+    return finalUrl;
+  } catch {
+    coverUrlCache.set(normalizedStopgameUrl, null);
+    return null;
+  }
 }
 
 type RangeSliderProps = {
@@ -591,7 +579,6 @@ export default function GameRouletteUI() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const tickTimeoutsRef = useRef<Array<ReturnType<typeof window.setTimeout>>>([]);
   const coverRequestIdRef = useRef(0);
-  const roundPreloadIdRef = useRef(0);
 
   const filteredGamesDb = useMemo(() => {
     return gamesDb.filter((game) =>
@@ -817,45 +804,6 @@ export default function GameRouletteUI() {
     window.localStorage.removeItem(LS_ROUND_SIZE);
   };
 
-  const preloadRoundCovers = (roundGames: GameEntry[], roundId: number) => {
-    roundGames.forEach((game) => {
-      if (!game.stopgameUrl) return;
-
-      void (async () => {
-        const coverUrl = await fetchStopgameCover(game.stopgameUrl);
-        if (roundPreloadIdRef.current !== roundId) return;
-
-        setSpinPool((prev) =>
-          prev.map((item) =>
-            item.id === game.id
-              ? {
-                  ...item,
-                  assets: {
-                    ...item.assets,
-                    stopgameCoverUrl: coverUrl,
-                    stopgameCoverFetched: true,
-                  },
-                }
-              : item,
-          ),
-        );
-
-        setSelectedGame((prev) => {
-          if (!prev || prev.id !== game.id) return prev;
-
-          return {
-            ...prev,
-            assets: {
-              ...prev.assets,
-              stopgameCoverUrl: coverUrl,
-              stopgameCoverFetched: true,
-            },
-          };
-        });
-      })();
-    });
-  };
-
   const handleSpin = () => {
     if (isSpinning || filteredGamesDb.length === 0) return;
 
@@ -865,16 +813,14 @@ export default function GameRouletteUI() {
     clearTickTimeouts();
 
     const newRoundGames = getRandomGames(filteredGamesDb, roundSize).map((game) => {
-      const normalizedUrl = game.stopgameUrl.trim();
-      const hasCachedValue = coverUrlCache.has(normalizedUrl);
-      const cachedCover = coverUrlCache.get(normalizedUrl);
+      const cachedCover = coverUrlCache.get(game.stopgameUrl.trim());
 
       return {
         ...game,
         assets: {
           ...game.assets,
-          stopgameCoverUrl: hasCachedValue ? cachedCover ?? null : game.assets?.stopgameCoverUrl ?? null,
-          stopgameCoverFetched: hasCachedValue,
+          stopgameCoverUrl: cachedCover ?? game.assets?.stopgameCoverUrl ?? null,
+          stopgameCoverFetched: typeof cachedCover !== 'undefined',
         },
       };
     });
@@ -895,9 +841,6 @@ export default function GameRouletteUI() {
     const duration = 5600 + totalSteps * 70;
     const sequence = buildSpinSequence(repeatedPool, spinStartIndex, totalSteps);
 
-    const currentRoundId = roundPreloadIdRef.current + 1;
-    roundPreloadIdRef.current = currentRoundId;
-
     setHasSpun(true);
     setSpinPool(newRoundGames);
     setSelectedGame(null);
@@ -907,8 +850,6 @@ export default function GameRouletteUI() {
     setSpinTransition('none');
     setSpinTranslate(0);
     startTickSound(totalSteps, duration);
-
-    preloadRoundCovers(newRoundGames, currentRoundId);
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
