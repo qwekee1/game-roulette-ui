@@ -418,7 +418,6 @@ async function fetchStopgameCover(stopgameUrl: string): Promise<string | null> {
       }
 
       const contentType = response.headers.get('content-type') ?? '';
-
       let finalUrl: string | null = null;
 
       if (contentType.includes('application/json')) {
@@ -426,6 +425,7 @@ async function fetchStopgameCover(stopgameUrl: string): Promise<string | null> {
         finalUrl = extractCoverUrlFromPayload(data, normalizedStopgameUrl);
       } else {
         const text = await response.text();
+
         try {
           const parsed = JSON.parse(text) as unknown;
           finalUrl = extractCoverUrlFromPayload(parsed, normalizedStopgameUrl);
@@ -591,7 +591,7 @@ export default function GameRouletteUI() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const tickTimeoutsRef = useRef<Array<ReturnType<typeof window.setTimeout>>>([]);
   const coverRequestIdRef = useRef(0);
-  const spinPoolPreloadRequestIdRef = useRef(0);
+  const roundPreloadIdRef = useRef(0);
 
   const filteredGamesDb = useMemo(() => {
     return gamesDb.filter((game) =>
@@ -707,52 +707,6 @@ export default function GameRouletteUI() {
     })();
   }, [selectedGame]);
 
-  useEffect(() => {
-    if (spinPool.length === 0) return;
-
-    const requestId = ++spinPoolPreloadRequestIdRef.current;
-    const gamesToPreload = spinPool.filter(
-      (game) => game.stopgameUrl && !game.assets?.stopgameCoverFetched,
-    );
-
-    if (gamesToPreload.length === 0) return;
-
-    gamesToPreload.forEach((game) => {
-      void (async () => {
-        const coverUrl = await fetchStopgameCover(game.stopgameUrl);
-        if (requestId !== spinPoolPreloadRequestIdRef.current) return;
-
-        setSpinPool((prev) =>
-          prev.map((item) =>
-            item.id === game.id
-              ? {
-                  ...item,
-                  assets: {
-                    ...item.assets,
-                    stopgameCoverUrl: coverUrl,
-                    stopgameCoverFetched: true,
-                  },
-                }
-              : item,
-          ),
-        );
-
-        setSelectedGame((prev) => {
-          if (!prev || prev.id !== game.id) return prev;
-
-          return {
-            ...prev,
-            assets: {
-              ...prev.assets,
-              stopgameCoverUrl: coverUrl,
-              stopgameCoverFetched: true,
-            },
-          };
-        });
-      })();
-    });
-  }, [spinPool]);
-
   const visibleGames = useMemo(() => {
     if (repeatedSpinPool.length === 0) return [];
     return buildVisibleGames(repeatedSpinPool, centerIndex);
@@ -863,6 +817,45 @@ export default function GameRouletteUI() {
     window.localStorage.removeItem(LS_ROUND_SIZE);
   };
 
+  const preloadRoundCovers = (roundGames: GameEntry[], roundId: number) => {
+    roundGames.forEach((game) => {
+      if (!game.stopgameUrl) return;
+
+      void (async () => {
+        const coverUrl = await fetchStopgameCover(game.stopgameUrl);
+        if (roundPreloadIdRef.current !== roundId) return;
+
+        setSpinPool((prev) =>
+          prev.map((item) =>
+            item.id === game.id
+              ? {
+                  ...item,
+                  assets: {
+                    ...item.assets,
+                    stopgameCoverUrl: coverUrl,
+                    stopgameCoverFetched: true,
+                  },
+                }
+              : item,
+          ),
+        );
+
+        setSelectedGame((prev) => {
+          if (!prev || prev.id !== game.id) return prev;
+
+          return {
+            ...prev,
+            assets: {
+              ...prev.assets,
+              stopgameCoverUrl: coverUrl,
+              stopgameCoverFetched: true,
+            },
+          };
+        });
+      })();
+    });
+  };
+
   const handleSpin = () => {
     if (isSpinning || filteredGamesDb.length === 0) return;
 
@@ -902,6 +895,9 @@ export default function GameRouletteUI() {
     const duration = 5600 + totalSteps * 70;
     const sequence = buildSpinSequence(repeatedPool, spinStartIndex, totalSteps);
 
+    const currentRoundId = roundPreloadIdRef.current + 1;
+    roundPreloadIdRef.current = currentRoundId;
+
     setHasSpun(true);
     setSpinPool(newRoundGames);
     setSelectedGame(null);
@@ -911,6 +907,8 @@ export default function GameRouletteUI() {
     setSpinTransition('none');
     setSpinTranslate(0);
     startTickSound(totalSteps, duration);
+
+    preloadRoundCovers(newRoundGames, currentRoundId);
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
