@@ -98,6 +98,22 @@ const LS_RATING_MAX = 'rouletteRatingMax';
 const LS_PERIOD_MIN_INDEX = 'roulettePeriodMinIndex';
 const LS_PERIOD_MAX_INDEX = 'roulettePeriodMaxIndex';
 const LS_ROUND_SIZE = 'rouletteRoundSize';
+const LS_HISTORY = 'rouletteHistory';
+
+function loadHistory(): GameEntry[] {
+  try {
+    const raw = window.localStorage.getItem(LS_HISTORY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(history: GameEntry[]) {
+  window.localStorage.setItem(LS_HISTORY, JSON.stringify(history.slice(0, 50)));
+}
+
 
 const THUMB_SIZE_PX = 20;
 
@@ -569,6 +585,18 @@ export default function GameRouletteUI() {
   const [periodMaxIndex, setPeriodMaxIndex] = useState<number>(() =>
     clamp(readNumberFromStorage(LS_PERIOD_MAX_INDEX, PERIOD_BUCKETS.length - 1), 0, PERIOD_BUCKETS.length - 1),
   );
+  
+  const [historyGames, setHistoryGames] = useState<GameEntry[]>(() => loadHistory());
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
+  const addToHistory = (game: GameEntry) => {
+    setHistoryGames((prev) => {
+      const updated = [game, ...prev.filter((g) => g.id !== game.id)];
+      saveHistory(updated);
+      return updated.slice(0, 50);
+    });
+  };
+
   const [roundSize, setRoundSize] = useState<number>(() =>
     clamp(readNumberFromStorage(LS_ROUND_SIZE, DEFAULT_ROUND_SIZE), MIN_ROUND_SIZE, MAX_ROUND_SIZE),
   );
@@ -867,6 +895,7 @@ export default function GameRouletteUI() {
 
         setCenterIndex(winnerIndex);
         setSelectedGame(winner);
+        addToHistory(winner);
         setSpinTransition('none');
         setSpinTranslate(0);
         setSpinSequence(finalVisibleGames);
@@ -1156,6 +1185,13 @@ export default function GameRouletteUI() {
                 >
                   <span className="block truncate leading-[1.15]">Настройки</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setIsHistoryOpen(true)}
+                  className="inline-flex whitespace-nowrap rounded-full bg-white px-3 py-2.5 text-left text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:px-4 xl:py-3 xl:text-[18px] ml-3"
+                >
+                  <span className="block truncate leading-[1.15]">История</span>
+                </button>
               </div>
             </aside>
           </div>
@@ -1362,7 +1398,36 @@ export default function GameRouletteUI() {
               `}</style>
             </div>
           </div>
-        </div>
+        
+          <div
+            className={[
+              'absolute inset-0 z-50 flex items-center justify-center p-6 backdrop-blur-sm transition-all duration-300 ease-out',
+              isHistoryOpen ? 'pointer-events-auto bg-black/45 opacity-100' : 'pointer-events-none bg-black/0 opacity-0',
+            ].join(' ')}
+          >
+            <div className="w-full max-w-[560px] rounded-[32px] bg-[#17191e] p-6 shadow-2xl">
+              <div className="mb-4 flex justify-between items-center">
+                <h2 className="text-xl text-white">История</h2>
+                <button onClick={() => setIsHistoryOpen(false)}>×</button>
+              </div>
+
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {historyGames.map((game, index) => (
+                  <button
+                    key={index}
+                    onClick={() => {
+                      setSelectedGame(game);
+                      setIsHistoryOpen(false);
+                    }}
+                    className="w-full text-left bg-white text-black rounded-full px-4 py-2"
+                  >
+                    {game.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
       </div>
     </div>
   );
