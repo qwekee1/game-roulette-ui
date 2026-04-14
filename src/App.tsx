@@ -100,6 +100,10 @@ const LS_PERIOD_MAX_INDEX = 'roulettePeriodMaxIndex';
 const LS_ROUND_SIZE = 'rouletteRoundSize';
 const LS_HISTORY = 'rouletteHistory';
 
+const THUMB_SIZE_PX = 20;
+
+const coverUrlCache = new Map<string, string | null>();
+
 function loadHistory(): GameEntry[] {
   try {
     const raw = window.localStorage.getItem(LS_HISTORY);
@@ -113,11 +117,6 @@ function loadHistory(): GameEntry[] {
 function saveHistory(history: GameEntry[]) {
   window.localStorage.setItem(LS_HISTORY, JSON.stringify(history.slice(0, 50)));
 }
-
-
-const THUMB_SIZE_PX = 20;
-
-const coverUrlCache = new Map<string, string | null>();
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -585,7 +584,6 @@ export default function GameRouletteUI() {
   const [periodMaxIndex, setPeriodMaxIndex] = useState<number>(() =>
     clamp(readNumberFromStorage(LS_PERIOD_MAX_INDEX, PERIOD_BUCKETS.length - 1), 0, PERIOD_BUCKETS.length - 1),
   );
-  
   const [historyGames, setHistoryGames] = useState<GameEntry[]>(() => loadHistory());
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
@@ -1398,36 +1396,7 @@ export default function GameRouletteUI() {
               `}</style>
             </div>
           </div>
-        
-          <div
-            className={[
-              'absolute inset-0 z-50 flex items-center justify-center p-6 backdrop-blur-sm transition-all duration-300 ease-out',
-              isHistoryOpen ? 'pointer-events-auto bg-black/45 opacity-100' : 'pointer-events-none bg-black/0 opacity-0',
-            ].join(' ')}
-          >
-            <div className="w-full max-w-[560px] rounded-[32px] bg-[#17191e] p-6 shadow-2xl">
-              <div className="mb-4 flex justify-between items-center">
-                <h2 className="text-xl text-white">История</h2>
-                <button onClick={() => setIsHistoryOpen(false)}>×</button>
-              </div>
-
-              <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                {historyGames.map((game, index) => (
-                  <button
-                    key={index}
-                    onClick={() => {
-                      setSelectedGame(game);
-                      setIsHistoryOpen(false);
-                    }}
-                    className="w-full text-left bg-white text-black rounded-full px-4 py-2"
-                  >
-                    {game.title}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
+        </div>
       </div>
     </div>
   );
