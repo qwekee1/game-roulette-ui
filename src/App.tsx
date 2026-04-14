@@ -1397,6 +1397,50 @@ export default function GameRouletteUI() {
             </div>
           </div>
         </div>
+
+          <div
+            className={[
+              'absolute inset-0 z-50 flex items-center justify-center p-6 backdrop-blur-sm transition-all duration-300 ease-out',
+              isHistoryOpen ? 'pointer-events-auto bg-black/45 opacity-100' : 'pointer-events-none bg-black/0 opacity-0',
+            ].join(' ')}
+          >
+            <div
+              className={[
+                'w-full max-w-[560px] rounded-[32px] bg-[#17191e] p-6 shadow-2xl transition-all duration-300 ease-out',
+                isHistoryOpen ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-4 scale-95 opacity-0',
+              ].join(' ')}
+            >
+              <div className="mb-4 flex justify-between items-center">
+                <h2 className="text-xl text-white">История</h2>
+                <button
+                  onClick={() => setIsHistoryOpen(false)}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-black"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {historyGames.length === 0 && (
+                  <div className="text-zinc-400">Пусто</div>
+                )}
+
+                {historyGames.map((game, index) => (
+                  <button
+                    key={index}
+                    onClick={() => {
+                      setSelectedGame(game);
+                      setIsHistoryOpen(false);
+                    }}
+                    className="w-full text-left bg-white text-black rounded-full px-4 py-2"
+                  >
+                    {game.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
       </div>
     </div>
   );
