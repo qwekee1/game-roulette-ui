@@ -1411,7 +1411,7 @@ export default function GameRouletteUI() {
               ].join(' ')}
             >
               <div className="mb-4 flex justify-between items-center">
-                <h2 className="text-xl text-white">История</h2>
+                <h2 className="text-[26px] font-semibold leading-[1.12] text-white xl:text-[30px]">История</h2>
                 <button
                   onClick={() => setIsHistoryOpen(false)}
                   className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-black"
@@ -1432,12 +1432,24 @@ export default function GameRouletteUI() {
                       setSelectedGame(game);
                       setIsHistoryOpen(false);
                     }}
-                    className="w-full text-left bg-white text-black rounded-full px-4 py-2"
+                    className="w-full text-left bg-white text-black rounded-full px-5 py-3 text-[16px] font-semibold xl:text-[18px]"
                   >
                     {game.title}
                   </button>
                 ))}
+              
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={() => {
+                    setHistoryGames([]);
+                    window.localStorage.removeItem(LS_HISTORY);
+                  }}
+                  className="inline-flex rounded-full bg-white px-5 py-3 text-[16px] font-medium text-black transition hover:bg-zinc-100 xl:text-[18px]"
+                >
+                  Очистить историю
+                </button>
               </div>
+
             </div>
           </div>
 
