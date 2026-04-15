@@ -98,25 +98,10 @@ const LS_RATING_MAX = 'rouletteRatingMax';
 const LS_PERIOD_MIN_INDEX = 'roulettePeriodMinIndex';
 const LS_PERIOD_MAX_INDEX = 'roulettePeriodMaxIndex';
 const LS_ROUND_SIZE = 'rouletteRoundSize';
-const LS_HISTORY = 'rouletteHistory';
 
 const THUMB_SIZE_PX = 20;
 
 const coverUrlCache = new Map<string, string | null>();
-
-function loadHistory(): GameEntry[] {
-  try {
-    const raw = window.localStorage.getItem(LS_HISTORY);
-    if (!raw) return [];
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
-}
-
-function saveHistory(history: GameEntry[]) {
-  window.localStorage.setItem(LS_HISTORY, JSON.stringify(history.slice(0, 50)));
-}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -584,17 +569,6 @@ export default function GameRouletteUI() {
   const [periodMaxIndex, setPeriodMaxIndex] = useState<number>(() =>
     clamp(readNumberFromStorage(LS_PERIOD_MAX_INDEX, PERIOD_BUCKETS.length - 1), 0, PERIOD_BUCKETS.length - 1),
   );
-  const [historyGames, setHistoryGames] = useState<GameEntry[]>(() => loadHistory());
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-
-  const addToHistory = (game: GameEntry) => {
-    setHistoryGames((prev) => {
-      const updated = [game, ...prev.filter((g) => g.id !== game.id)];
-      saveHistory(updated);
-      return updated.slice(0, 50);
-    });
-  };
-
   const [roundSize, setRoundSize] = useState<number>(() =>
     clamp(readNumberFromStorage(LS_ROUND_SIZE, DEFAULT_ROUND_SIZE), MIN_ROUND_SIZE, MAX_ROUND_SIZE),
   );
@@ -893,7 +867,6 @@ export default function GameRouletteUI() {
 
         setCenterIndex(winnerIndex);
         setSelectedGame(winner);
-        addToHistory(winner);
         setSpinTransition('none');
         setSpinTranslate(0);
         setSpinSequence(finalVisibleGames);
@@ -1183,13 +1156,6 @@ export default function GameRouletteUI() {
                 >
                   <span className="block truncate leading-[1.15]">Настройки</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setIsHistoryOpen(true)}
-                  className="inline-flex whitespace-nowrap rounded-full bg-white px-3 py-2.5 text-left text-[16px] font-medium text-black transition-all duration-200 ease-out hover:bg-zinc-100 active:scale-[0.98] xl:px-4 xl:py-3 xl:text-[18px] ml-3"
-                >
-                  <span className="block truncate leading-[1.15]">История</span>
-                </button>
               </div>
             </aside>
           </div>
@@ -1397,62 +1363,6 @@ export default function GameRouletteUI() {
             </div>
           </div>
         </div>
-
-          <div
-            className={[
-              'absolute inset-0 z-50 flex items-center justify-center p-6 backdrop-blur-sm transition-all duration-300 ease-out',
-              isHistoryOpen ? 'pointer-events-auto bg-black/45 opacity-100' : 'pointer-events-none bg-black/0 opacity-0',
-            ].join(' ')}
-          >
-            <div
-              className={[
-                'w-full max-w-[560px] rounded-[32px] bg-[#17191e] p-6 shadow-2xl transition-all duration-300 ease-out',
-                isHistoryOpen ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-4 scale-95 opacity-0',
-              ].join(' ')}
-            >
-              <div className="mb-4 flex justify-between items-center">
-                <h2 className="text-[26px] font-semibold leading-[1.12] text-white xl:text-[30px]">История</h2>
-                <button
-                  onClick={() => setIsHistoryOpen(false)}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-black"
-                >
-                  ×
-                </button>
-              </div>
-
-              <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                {historyGames.length === 0 && (
-                  <div className="text-zinc-400">Пусто</div>
-                )}
-
-                {historyGames.map((game, index) => (
-                  <button
-                    key={index}
-                    onClick={() => {
-                      setSelectedGame(game);
-                      setIsHistoryOpen(false);
-                    }}
-                    className="w-full text-left bg-white text-black rounded-full px-5 py-3 text-[16px] font-semibold xl:text-[18px]"
-                  >
-                    {game.title}
-                  </button>
-                ))}
-              
-              <div className="mt-4 flex justify-end">
-                <button
-                  onClick={() => {
-                    setHistoryGames([]);
-                    window.localStorage.removeItem(LS_HISTORY);
-                  }}
-                  className="inline-flex rounded-full bg-white px-5 py-3 text-[16px] font-medium text-black transition hover:bg-zinc-100 xl:text-[18px]"
-                >
-                  Очистить историю
-                </button>
-              </div>
-
-            </div>
-          </div>
-
       </div>
     </div>
   );
